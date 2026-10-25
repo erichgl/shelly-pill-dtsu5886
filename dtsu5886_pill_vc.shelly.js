@@ -1,6 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant + HTTP
- * Version: 0.14.0 (2026-10-25)
+ * Version: 0.15.0 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -57,6 +57,11 @@
  *   Nummer herausfinden: Icon in der Weboberfläche wählen, Script neu starten,
  *   Nummer aus der Konsole übernehmen.
  *
+ * STATISTIK
+ *   STATS: 'measurement' setzt bei allen Messwerten "Type of statistics = Measurement"
+ *   (meta.cloud), damit Shelly Cloud/App Verläufe aufzeichnet.
+ *   null = nicht ändern (in der Weboberfläche gewählte Einstellung bleibt erhalten).
+ *
  * DEBUG
  *   DEBUG: 1 gibt die serielle Kommunikation in der Script-Konsole aus:
  *     TX  Modbus-Anfrage als Frame (Hex, inkl. CRC)
@@ -66,7 +71,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.14.0';
+var VERSION = '0.15.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -105,6 +110,9 @@ var CONFIG = {
   HTTP: 1,              // 1 = JSON-Endpunkt auf der Pill bereitstellen, 0 = aus
   HTTP_ENDPOINT: 'dtsu', // -> http://<pill-ip>/script/<id>/dtsu
 };
+
+// Statistik-Typ für alle Messwerte ('measurement', 'log' … / null = nicht ändern)
+var STATS = 'measurement';
 
 // Web-Icon pro Einheit (Zahl = meta.ui.webIcon, null = nicht ändern / in der Weboberfläche gesetztes Icon behalten)
 var ICONS = {
@@ -265,14 +273,19 @@ function wantIcon(e) {
 
 // existingIcon: bereits gesetztes webIcon (aus der Weboberfläche) – bleibt erhalten,
 // wenn im Script kein Icon festgelegt ist
-function numberCfg(e, existingIcon) {
+// existingCloud: bereits gesetzter Statistik-Typ – bleibt erhalten, wenn STATS null ist
+function numberCfg(e, existingIcon, existingCloud) {
   var ui = { view: 'label', unit: e.unit, step: Math.pow(10, -e.dec) };
   var icon = wantIcon(e);
   if (icon === null && existingIcon !== undefined && existingIcon !== null) icon = existingIcon;
   if (icon !== null) ui.webIcon = icon;
+  var meta = { ui: ui };
+  var st = (e.stats !== undefined) ? e.stats : STATS;
+  if (st) meta.cloud = [st];
+  else if (existingCloud) meta.cloud = existingCloud;
   return {
     name: e.name, default_value: Math.min(Math.max(0, e.min), e.max), min: e.min, max: e.max, persisted: false,
-    meta: { ui: ui },
+    meta: meta,
   };
 }
 
@@ -291,7 +304,7 @@ function setupComponents(done) {
   for (i = 0; i < nNum; i++) {
     ENTITIES[i].vc = 'number:' + (CONFIG.FIRST_ID + i);
     USED.push(ENTITIES[i]);
-    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i], null), ent: ENTITIES[i] });
+    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i], null, null), ent: ENTITIES[i] });
   }
   steps.push({ type: 'group', id: CONFIG.FIRST_ID, cfg: { name: CONFIG.GROUP_NAME } });
 
@@ -329,7 +342,8 @@ function setupComponents(done) {
       // vorhandenes Icon auslesen und übernehmen
       Shelly.call('Number.GetConfig', { id: s.id }, function (cur) {
         var old = (cur && cur.meta && cur.meta.ui) ? cur.meta.ui.webIcon : null;
-        var cfg = numberCfg(s.ent, old);
+        var oldCloud = (cur && cur.meta) ? cur.meta.cloud : null;
+        var cfg = numberCfg(s.ent, old, oldCloud);
         var ic = cfg.meta.ui.webIcon;
         iconInfo.push(s.id + '=' + (ic === undefined ? '-' : ic));
         Shelly.call('Number.SetConfig', { id: s.id, config: cfg }, cb);

@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.14.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.15.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -64,6 +64,16 @@ var ICONS = {
 ```
 
 oder pro Wert in `ENTITIES` mit `icon: <zahl>`.
+
+### Statistik
+
+Alle Messwerte werden mit **„Type of statistics = Measurement“** angelegt (`meta.cloud: ["measurement"]`), damit Shelly App/Cloud Verläufe aufzeichnet. Einstellbar oben im Script:
+
+```js
+var STATS = 'measurement';   // null = nicht ändern (Einstellung aus der Weboberfläche bleibt)
+```
+
+Pro Wert abweichend in `ENTITIES` mit `stats: '…'` (oder `stats: null` für keine Statistik).
 
 ## MQTT
 
