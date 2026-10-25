@@ -4,6 +4,8 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
+> **Version:** Script `0.9.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+
 > ⚠️ **Status:** Registerbelegung am L-home DTSU5886 per PC-Modbus-Tool ausgelesen und plausibilisiert. Test auf der Pill steht noch aus; der Energie-Faktor (0,01 oder 0,001 kWh) ist noch mit dem Display abzugleichen (`ENERGY_SCALE`).
 
 ## Messwerte

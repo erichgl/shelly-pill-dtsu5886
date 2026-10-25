@@ -1,5 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components
+ * Version: 0.9.0 (2026-10-25)
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
  *
@@ -31,6 +32,8 @@
  *   werden aus Anfrage und Antwort rekonstruiert und entsprechen dem, was
  *   über die Leitung geht.
  */
+
+var VERSION = '0.9.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -285,6 +288,7 @@ function poll() {
 // ============================================================================
 // START
 // ============================================================================
+log('DTSU5886 Pill-Script v' + VERSION);
 setupSerial(function () {
   setupComponents(function () {
     log('Läuft: ' + USED.length + ' Werte als Komponente, alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
