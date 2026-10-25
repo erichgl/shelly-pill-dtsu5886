@@ -6,7 +6,7 @@ Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direk
 
 > **Version:** Script `0.10.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
-> ⚠️ **Status:** Registerbelegung am L-home DTSU5886 per PC-Modbus-Tool ausgelesen und plausibilisiert. Test auf der Pill steht noch aus; der Energie-Faktor (0,01 oder 0,001 kWh) ist noch mit dem Display abzugleichen (`ENERGY_SCALE`).
+> ✅ **Status:** Modbus-RTU-Kommunikation zwischen Pill und L-home DTSU5886 funktioniert (mit RS485-Modul mit automatischer Flusssteuerung). Offen: Energie-Faktor (0,01 oder 0,001 kWh) mit dem Display abgleichen (`ENERGY_SCALE`).
 
 ## Messwerte
 
@@ -78,7 +78,9 @@ Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerich
 ## Hardware
 
 - Shelly The Pill (S3SN-0U53X), Firmware **≥ 2.0.1**
-- TTL↔RS485-Modul mit **automatischer Richtungsumschaltung** (ohne DE/RE-Pin)
+- TTL↔RS485-Modul mit **automatischer Flusssteuerung / Richtungsumschaltung** (ohne DE/RE-Pin) – **zwingend erforderlich**
+
+> ⚠️ Module mit manueller Richtungsumschaltung (z. B. einfache MAX485-Module mit DE/RE-Pins) funktionieren an der Pill **nicht**: Die Anfrage geht raus, aber die Antwort des Zählers kommt nie an, weil das Modul nicht auf Empfang zurückschaltet. Die Pill hat keinen freien Pin, der DE/RE steuert. Erkennbar am Modul-Aufdruck „auto direction“ bzw. „automatic flow control“ oder daran, dass es nur die Pins VCC, GND, TXD, RXD hat.
 - DTSU5886 mit RS485-Klemmen A/B
 - optional: Shelly 5-Terminal-Add-on (sonst direkt am Micro-USB-Stecker der Pill)
 
@@ -163,7 +165,7 @@ Erwartet: drei Werte um `2300` (= 230,0 V × 10) – die Spannungen L1–L3. Kom
 
 | Symptom | Ursache / Lösung |
 |---|---|
-| „Keine Antwort“ | TX/RX am Modul tauschen, dann A/B tauschen; Baudrate, Format und Adresse prüfen |
+| „Keine Antwort“ | Modul mit automatischer Flusssteuerung verwenden (häufigste Ursache: Senden geht, Empfangen nicht); TX/RX am Modul tauschen, dann A/B tauschen; Baudrate, Format und Adresse prüfen |
 | Werte 0 oder unsinnig | Registerbelegung weicht ab – `DEBUG: 1` setzen und Registerwerte in der Konsole prüfen |
 | Bezug/Einspeisung vertauscht, Leistung negativ | Phasen falsch herum durch den Zähler geführt (IN/OUT) |
 | `Pill.SetConfig Fehler` | Firmware < 2.0.1 |
