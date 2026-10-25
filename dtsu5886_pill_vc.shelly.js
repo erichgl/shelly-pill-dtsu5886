@@ -1,6 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant
- * Version: 0.11.0 (2026-10-25)
+ * Version: 0.11.1 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -47,7 +47,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.11.0';
+var VERSION = '0.11.1';
 
 // ============================================================================
 // KONFIGURATION
@@ -279,10 +279,23 @@ function setupComponents(done) {
 // ============================================================================
 var mqttWarned = false;
 
+// MQTT nur nutzen, wenn es in der Pill aktiviert ist (sonst werfen die MQTT-Funktionen Fehler)
+function mqttEnabled() {
+  if (!CONFIG.MQTT || typeof MQTT === 'undefined') return false;
+  var c = Shelly.getComponentConfig('mqtt');
+  return c && c.enable ? true : false;
+}
+
+function mqttReady() {
+  if (!mqttEnabled()) return false;
+  try { return MQTT.isConnected() ? true : false; } catch (err) { return false; }
+}
+
 function mqttPublish(state, v) {
   if (!CONFIG.MQTT) return;
-  if (typeof MQTT === 'undefined' || !MQTT.isConnected()) {
-    if (!mqttWarned) log('MQTT nicht verbunden – Broker in der Pill einrichten (Settings -> MQTT)');
+  if (!mqttReady()) {
+    if (!mqttWarned) log(mqttEnabled() ? 'MQTT nicht verbunden – Broker prüfen'
+                                       : 'MQTT in der Pill deaktiviert – Settings -> MQTT einschalten');
     mqttWarned = true;
     return;
   }
@@ -290,10 +303,14 @@ function mqttPublish(state, v) {
   mqttWarned = false;
   var retain = CONFIG.MQTT_RETAIN ? true : false;
   var js = JSON.stringify(state);
-  MQTT.publish(CONFIG.MQTT_TOPIC + '/state', js, 0, retain);
-  if (CONFIG.DEBUG) log('MQTT ' + CONFIG.MQTT_TOPIC + '/state ' + js);
-  if (CONFIG.MQTT_RAW) {
-    MQTT.publish(CONFIG.MQTT_TOPIC + '/raw', JSON.stringify({ addr: READ_ADDR, values: v }), 0, retain);
+  try {
+    MQTT.publish(CONFIG.MQTT_TOPIC + '/state', js, 0, retain);
+    if (CONFIG.DEBUG) log('MQTT ' + CONFIG.MQTT_TOPIC + '/state ' + js);
+    if (CONFIG.MQTT_RAW) {
+      MQTT.publish(CONFIG.MQTT_TOPIC + '/raw', JSON.stringify({ addr: READ_ADDR, values: v }), 0, retain);
+    }
+  } catch (err) {
+    log('MQTT Fehler: ' + err);
   }
 }
 
@@ -337,7 +354,7 @@ function haConfig(e, devId, avail) {
 
 function haPublish() {
   if (!CONFIG.MQTT || !CONFIG.HA_DISCOVERY || haBusy) return;
-  if (typeof MQTT === 'undefined' || !MQTT.isConnected()) return;
+  if (!mqttReady()) return;
   haBusy = true;
   var devId = haDevId();
   var mq = Shelly.getComponentConfig('mqtt');
@@ -350,7 +367,13 @@ function haPublish() {
     }
     var e = ENTITIES[i];
     var topic = CONFIG.HA_PREFIX + '/sensor/' + devId + '/' + e.key + '/config';
-    MQTT.publish(topic, JSON.stringify(haConfig(e, devId, avail)), 0, true);
+    try {
+      MQTT.publish(topic, JSON.stringify(haConfig(e, devId, avail)), 0, true);
+    } catch (err) {
+      haBusy = false;
+      log('HA Discovery abgebrochen: ' + err);
+      return;
+    }
     if (CONFIG.DEBUG) log('HA ' + topic);
     Timer.set(150, false, function () { next(i + 1); });
   }
@@ -358,13 +381,20 @@ function haPublish() {
 }
 
 function haSetup() {
-  if (!CONFIG.MQTT || !CONFIG.HA_DISCOVERY || typeof MQTT === 'undefined') return;
-  // bei jeder (Wieder-)Verbindung zum Broker
-  MQTT.setConnectHandler(function () { Timer.set(2000, false, haPublish); });
-  // bei Neustart von Home Assistant
-  MQTT.subscribe(CONFIG.HA_PREFIX + '/status', function (topic, msg) {
-    if (msg === 'online') Timer.set(3000, false, haPublish);
-  });
+  if (!CONFIG.HA_DISCOVERY) return;
+  if (!mqttEnabled()) {
+    return;
+  }
+  try {
+    // bei jeder (Wieder-)Verbindung zum Broker
+    MQTT.setConnectHandler(function () { Timer.set(2000, false, haPublish); });
+    // bei Neustart von Home Assistant
+    MQTT.subscribe(CONFIG.HA_PREFIX + '/status', function (topic, msg) {
+      if (msg === 'online') Timer.set(3000, false, haPublish);
+    });
+  } catch (err) {
+    log('MQTT-Handler nicht gesetzt: ' + err);
+  }
   Timer.set(1500, false, haPublish);
 }
 
@@ -419,7 +449,7 @@ log('DTSU5886 Pill-Script v' + VERSION);
 setupSerial(function () {
   setupComponents(function () {
     log('Läuft: ' + USED.length + ' Werte als Komponente' +
-        (CONFIG.MQTT ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : '') +
+        (mqttEnabled() ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : ', MQTT aus') +
         ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
     haSetup();
     Timer.set(500, false, poll);

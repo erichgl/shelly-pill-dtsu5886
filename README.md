@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.11.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.11.1` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -73,7 +73,7 @@ Mit `MQTT: 1` (Standard) veröffentlicht das Script bei jeder Abfrage **alle** W
 | `e_imp`, `e_exp`, `e_net` | Energie Bezug / Einspeisung / netto | kWh |
 
 Einstellungen im Script: `MQTT` (0/1), `MQTT_TOPIC` (Basis-Topic), `MQTT_RAW` (0/1), `MQTT_RETAIN` (0/1).
-Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerichtet; das Script nutzt diese Verbindung. Ist sie nicht aktiv, meldet die Konsole einmalig „MQTT nicht verbunden“.
+Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerichtet; das Script nutzt diese Verbindung. Ist MQTT in der Pill ausgeschaltet, läuft das Script ohne MQTT weiter und meldet einmalig „MQTT in der Pill deaktiviert“.
 
 ## Home Assistant
 
