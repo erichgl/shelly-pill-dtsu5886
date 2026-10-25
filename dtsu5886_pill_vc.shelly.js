@@ -1,6 +1,6 @@
 /**
- * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant
- * Version: 0.12.0 (2026-10-25)
+ * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant + HTTP
+ * Version: 0.13.0 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -35,6 +35,13 @@
  *   Geänderte Broker-Einstellungen übernimmt die Pill erst nach einem Neustart;
  *   das Script startet sie dafür einmal neu ("Run on startup" muss aktiv sein).
  *
+ * HTTP (JSON)
+ *   HTTP: 1 stellt alle Werte direkt auf der Pill bereit:
+ *     http://<pill-ip>/script/<id>/dtsu           alle Werte als JSON
+ *     http://<pill-ip>/script/<id>/dtsu?raw=1     zusätzlich Rohregister 0..50
+ *     http://<pill-ip>/script/<id>/dtsu?v=p       nur ein Wert als Text (Feldname wie MQTT)
+ *   Die genaue Adresse steht beim Start in der Konsole.
+ *
  * HOME ASSISTANT DISCOVERY
  *   HA_DISCOVERY: 1 meldet alle Werte als Sensoren bei Home Assistant an
  *   (homeassistant/sensor/<geraet>/<key>/config, retained) – mit Einheit,
@@ -50,7 +57,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.12.0';
+var VERSION = '0.13.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -84,6 +91,10 @@ var CONFIG = {
   MQTT_PREFIX: '',      // Topic-Prefix der Pill ('' = Geräte-ID), u.a. für <prefix>/online
   MQTT_SSL: '',         // '' = ohne TLS, '*' = TLS ohne Prüfung, 'ca.pem' = TLS mit CA
   MQTT_AUTO_REBOOT: 1,  // 1 = nach Änderung automatisch neu starten
+
+  // --- HTTP ---
+  HTTP: 1,              // 1 = JSON-Endpunkt auf der Pill bereitstellen, 0 = aus
+  HTTP_ENDPOINT: 'dtsu', // -> http://<pill-ip>/script/<id>/dtsu
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
@@ -415,6 +426,7 @@ function haSetup() {
 // ABFRAGE
 // ============================================================================
 var busy = false, fails = 0;
+var last = { state: null, raw: null, ts: 0 };  // letzte gültige Messung (für HTTP)
 var method = CONFIG.FC === 'input' ? 'ReadInputRegisters' : 'ReadHoldingRegisters';
 
 function poll() {
@@ -451,8 +463,79 @@ function poll() {
       state[e.key] = val;
       if (e.h) e.h.setValue(Math.min(Math.max(val, e.min), e.max));
     }
+    last.state = state;
+    last.raw = v;
+    last.ts = nowTs();
     mqttPublish(state, v);
   });
+}
+
+// ============================================================================
+// HTTP-ENDPUNKT
+// ============================================================================
+function nowTs() {
+  var st = Shelly.getComponentStatus('sys');
+  return st && st.unixtime ? st.unixtime : 0;
+}
+
+// Wert eines Query-Parameters ohne RegExp/split (Espruino-kompatibel)
+function queryParam(q, name) {
+  if (!q) return null;
+  var key = name + '=';
+  var i = q.indexOf(key);
+  while (i > 0 && q.charAt(i - 1) !== '&') i = q.indexOf(key, i + 1);
+  if (i < 0) return null;
+  var start = i + key.length;
+  var end = q.indexOf('&', start);
+  return end < 0 ? q.slice(start) : q.slice(start, end);
+}
+
+function httpReply(res, code, type, body) {
+  res.code = code;
+  res.headers = [['Content-Type', type], ['Access-Control-Allow-Origin', '*']];
+  res.body = body;
+  res.send();
+}
+
+function httpHandler(req, res) {
+  if (!last.state) {
+    httpReply(res, 503, 'application/json', JSON.stringify({ error: 'noch keine Daten vom Zaehler', fails: fails }));
+    return;
+  }
+  var q = req.query || '';
+  var one = queryParam(q, 'v');
+  if (one !== null) {
+    if (last.state[one] === undefined) {
+      httpReply(res, 404, 'text/plain', 'unbekannter Wert: ' + one);
+    } else {
+      httpReply(res, 200, 'text/plain', '' + last.state[one]);
+    }
+    return;
+  }
+  var now = nowTs();
+  var out = {
+    device: CONFIG.HA_DEVICE_NAME,
+    version: VERSION,
+    slave: CONFIG.SLAVE_ID,
+    ts: last.ts,
+    age: now && last.ts ? now - last.ts : null,
+    ok: fails === 0,
+    values: last.state,
+  };
+  if (queryParam(q, 'raw') === '1') out.raw = { addr: READ_ADDR, values: last.raw };
+  httpReply(res, 200, 'application/json', JSON.stringify(out));
+}
+
+function httpSetup() {
+  if (!CONFIG.HTTP || typeof HTTPServer === 'undefined') return;
+  try {
+    var path = HTTPServer.registerEndpoint(CONFIG.HTTP_ENDPOINT, httpHandler);
+    var wifi = Shelly.getComponentStatus('wifi');
+    var ip = wifi && wifi.sta_ip ? wifi.sta_ip : '<pill-ip>';
+    log('HTTP: http://' + ip + path);
+  } catch (err) {
+    log('HTTP-Endpunkt nicht angelegt: ' + err);
+  }
 }
 
 // ============================================================================
@@ -536,6 +619,7 @@ mqttSetup(function () {
           (mqttEnabled() ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : ', MQTT aus') +
           ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
       haSetup();
+      httpSetup();
       Timer.set(500, false, poll);
       Timer.set(CONFIG.POLL_INTERVAL, true, poll);
     });

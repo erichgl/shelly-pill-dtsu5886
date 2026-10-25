@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.12.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.13.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -95,6 +95,26 @@ Die MQTT-Verbindung der Pill muss nicht von Hand eingerichtet werden – das Scr
 - `MQTT_SERVER: ''` (Standard) = Broker-Einstellungen der Pill bleiben unangetastet.
 
 > ⚠️ Das Passwort steht im Klartext im Script und ist für jeden mit Zugriff auf die Weboberfläche der Pill lesbar. Ein Script mit echtem Passwort nicht ins Git-Repository einchecken.
+
+## HTTP (JSON direkt von der Pill)
+
+Mit `HTTP: 1` (Standard) stellt das Script alle Werte direkt auf der Pill bereit – ohne Broker oder zusätzlichen Rechner. Die genaue Adresse steht beim Start in der Konsole (`HTTP: http://192.168.1.50/script/1/dtsu`).
+
+| Aufruf | Antwort |
+|---|---|
+| `http://<pill-ip>/script/<id>/dtsu` | alle 28 Werte als JSON |
+| `http://<pill-ip>/script/<id>/dtsu?raw=1` | zusätzlich die Rohregister 0–50 |
+| `http://<pill-ip>/script/<id>/dtsu?v=p` | nur ein Wert als Text, z. B. `131` (Feldnamen wie bei MQTT) |
+
+```json
+{"device":"DTSU5886","version":"0.13.0","slave":8,"ts":1761426000,"age":2,"ok":true,
+ "values":{"p_l1":57,"p_l2":0,"p_l3":72,"p":131,"e_imp":10772.29,"u_l1":236.4, …}}
+```
+
+- `ts` = Zeitpunkt der letzten erfolgreichen Messung (Unix-Zeit), `age` = Alter in Sekunden, `ok` = letzte Abfrage erfolgreich.
+- Vor der ersten Messung antwortet der Endpunkt mit HTTP 503, bei unbekanntem Feldnamen mit 404.
+- Ist in der Pill eine Anmeldung (Passwort) aktiv, gilt sie auch für diesen Endpunkt.
+- Einstellungen: `HTTP` (0/1), `HTTP_ENDPOINT` (Name des Endpunkts, Standard `dtsu`).
 
 ## Home Assistant
 
