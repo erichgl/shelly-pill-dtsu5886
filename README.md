@@ -34,38 +34,26 @@ Weitere Register: 12–14 Blindleistung L1–L3, 16–18 Scheinleistung L1–L3,
 
 ### 1. Verkabelung
 
-```
-DTSU5886  A  ────────────  A        RS485-Modul
-DTSU5886  B  ────────────  B
-                           RXD/DI  ─────────────  IO1 (TX)   Pill
-                           TXD/RO  ──[Teiler]───  IO2 (RX)   Pill
-                           VCC     ─────────────  5V         Pill
-                           GND     ─────────────  GND        Pill
-```
-
-#### Anschluss über den Micro-USB-Port der Pill (ohne 5-Terminal-Add-on)
-
-Die drei IOs der Pill liegen auf dem Micro-USB-Port. Das USB-C-Port oben bleibt für die Stromversorgung der Pill.
+Signalweg: **Zähler → RS485-Modul → Micro-USB → Pill**
 
 ```
-            Micro-USB (Pill)
-   ┌─────────────────────────────┐
-   │  1     2     3     4     5  │
-   │ VBUS   D−    D+    ID   GND │
-   └──┬─────┬─────┬─────┬─────┬──┘
-      │     │     │     │     │
-      │     │     │     └─ (frei)
-      │     │     │           │
-     5V    IO1   IO2         GND
-      │    (TX)  (RX)         │
-      │     │     │           │
-      │     │     └──[Teiler]─┼─────  TXD/RO   RS485-Modul
-      │     └─────────────────┼─────  RXD/DI
-      └───────────────────────┼─────  VCC
-                              └─────  GND
-                                      A  ───────  A  DTSU5886
-                                      B  ───────  B
+ DTSU5886         RS485-Modul             Micro-USB                   The Pill
+ (Zähler)         (TTL ↔ RS485)           (Kabel / Breakout)
+                                          Pin  Signal  Ader
+ ┌───────┐        ┌──────────┐            ┌──────────────────┐        ┌──────────┐
+ │     A ├────────┤ A        │            │                  │        │          │
+ │     B ├────────┤ B        │            │                  │        │          │
+ └───────┘        │      VCC ├────────────┤ 1   VBUS  rot    ├────────┤ 5V       │
+                  │   RXD/DI ├────────────┤ 2   D−    weiß   ├────────┤ IO1 (TX) │
+                  │   TXD/RO ├─[Teiler]───┤ 3   D+    grün   ├────────┤ IO2 (RX) │
+                  │          │     (frei) ┤ 4   ID    –      ├────────┤ IO3      │
+                  │      GND ├────────────┤ 5   GND   schwarz├────────┤ GND      │
+                  └──────────┘            └──────────────────┘        └──────────┘
 ```
+
+- **Zähler → Modul:** A an A, B an B (verdrilltes Adernpaar). Kommt keine Antwort, A/B tauschen.
+- **Modul → USB:** TX und RX kreuzen – RXD/DI des Moduls an IO1 (TX der Pill), TXD/RO an IO2 (RX der Pill). Den Spannungsteiler (z. B. 1 kΩ in Serie, 2 kΩ nach GND) nur bei einem Modul mit 5-V-Logik.
+- **USB → Pill:** Die IOs der Pill liegen auf dem Micro-USB-Port. Der USB-C-Port oben bleibt für die Stromversorgung der Pill; das Modul wird über Pin 1 (5 V) mitversorgt.
 
 | Micro-USB-Pin | Signal | Pill-Funktion | Aderfarbe USB-Kabel* | → RS485-Modul |
 |---|---|---|---|---|
