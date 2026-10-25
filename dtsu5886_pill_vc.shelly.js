@@ -18,18 +18,25 @@
  *   49-50 Energie netto         32 Bit, x ENERGY_SCALE kWh
  *
  * VIRTUELLE KOMPONENTEN
- *   Die Pill erlaubt nur wenige virtuelle Komponenten. Angelegt werden (in dieser Reihenfolge):
- *     boolean:200  Debug-Schalter (an = alle Messwerte in der Konsole)
- *     number:200…  die ersten MAX_NUMBERS Einträge aus ENTITIES
- *     group:200    Gruppe (entfällt, falls kein Platz mehr frei ist)
- *   Alle übrigen Werte werden trotzdem gelesen und im Debug-Modus ausgegeben.
+ *   Die Pill erlaubt nur 9 virtuelle Komponenten. Angelegt werden:
+ *     number:200…208  die ersten MAX_NUMBERS Einträge aus ENTITIES
+ *     group:200       Gruppe (entfällt, falls kein Platz mehr frei ist)
  *   Reihenfolge in ENTITIES = Priorität. Zum Tauschen einfach Zeilen verschieben.
+ *
+ * DEBUG
+ *   DEBUG: 1 gibt die serielle Kommunikation in der Script-Konsole aus:
+ *     TX  Modbus-Anfrage als Frame (Hex, inkl. CRC)
+ *     RX  Antwort als Frame (Hex) und Registerwerte (dezimal)
+ *   Hinweis: UART und CRC übernimmt die Firmware (MbRtuClient). Die Frames
+ *   werden aus Anfrage und Antwort rekonstruiert und entsprechen dem, was
+ *   über die Leitung geht.
  */
 
 // ============================================================================
 // KONFIGURATION
 // ============================================================================
 var CONFIG = {
+  DEBUG: 0,             // 1 = serielle Kommunikation (TX/RX) in der Konsole, 0 = aus
   SLAVE_ID: 1,          // Modbus-Adresse am Zähler
   BAUD: 9600,           // Baudrate am Zähler
   FORMAT: '8N1',        // Datenbits/Parität/Stopp, z.B. '8E1'
@@ -37,30 +44,28 @@ var CONFIG = {
   FC: 'auto',           // 'holding' (FC03), 'input' (FC04) oder 'auto'
   POLL_INTERVAL: 5000,  // ms
   ENERGY_SCALE: 0.01,   // kWh pro Zählschritt – mit Display vergleichen, ggf. 0.001
-  MAX_NUMBERS: 8,       // Anzahl number-Komponenten (+ Debug-Schalter = 9)
-  FIRST_ID: 200,        // IDs: group:200, boolean:200, number:200…
+  MAX_NUMBERS: 9,       // Anzahl number-Komponenten (Limit der Pill)
+  FIRST_ID: 200,        // IDs: number:200…, group:200
   GROUP_NAME: 'DTSU5886',
-  DEBUG: false,         // Debug dauerhaft an (zusätzlich zum Schalter)
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
 var READ_ADDR = 0;
 var READ_QTY = 51;
 
-// Reihenfolge = Priorität für die virtuellen Komponenten.
+// Reihenfolge = Priorität. Die ersten MAX_NUMBERS werden zur virtuellen Komponente.
 // type: 'u16', 's16', 'u32' (High-Word zuerst); scale 'E' = ENERGY_SCALE
 var ENTITIES = [
-  // --- als virtuelle Komponente (die ersten MAX_NUMBERS) ---
   { name: 'Leistung gesamt', off: 7,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
   { name: 'Bezug',           off: 29, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
+  { name: 'Einspeisung',     off: 39, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
   { name: 'Leistung L1',     off: 8,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
   { name: 'Leistung L2',     off: 9,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
   { name: 'Leistung L3',     off: 10, type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
   { name: 'Strom L1',        off: 3,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
   { name: 'Strom L2',        off: 4,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
   { name: 'Strom L3',        off: 5,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
-  // --- nur im Debug-Modus (Konsole) ---
-  { name: 'Einspeisung',     off: 39, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
+  // --- Reserve: zum Tauschen nach oben schieben ---
   { name: 'Spannung L1',     off: 0,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
   { name: 'Spannung L2',     off: 1,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
   { name: 'Spannung L3',     off: 2,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
@@ -74,15 +79,9 @@ var ENTITIES = [
 // ============================================================================
 // HILFSFUNKTIONEN
 // ============================================================================
-var debugHandle = null;
-var lastDebug = null;
+var USED = [];  // die als Komponente genutzten ENTITIES
 
 function log(m) { print('[dtsu] ' + m); }
-
-function isDebug() {
-  if (CONFIG.DEBUG) return true;
-  return debugHandle ? debugHandle.getValue() === true : false;
-}
 
 function decode(v, off, type) {
   var x;
@@ -96,6 +95,56 @@ function decode(v, off, type) {
 function round(v, dec) {
   var f = Math.pow(10, dec || 0);
   return Math.round(v * f) / f;
+}
+
+// --- Debug: Modbus-Frames rekonstruieren ---
+function crc16(b) {
+  var crc = 0xFFFF, i, j;
+  for (i = 0; i < b.length; i++) {
+    crc ^= b[i];
+    for (j = 0; j < 8; j++) crc = (crc & 1) ? ((crc >> 1) ^ 0xA001) : (crc >> 1);
+  }
+  return crc & 0xFFFF;
+}
+
+function withCrc(b) {
+  var c = crc16(b);
+  b.push(c & 0xFF);
+  b.push((c >> 8) & 0xFF);
+  return b;
+}
+
+function hex2(n) { var s = (n & 0xFF).toString(16).toUpperCase(); return s.length < 2 ? '0' + s : s; }
+
+function hexLine(b, from, to) {
+  var s = [], i;
+  for (i = from; i < to && i < b.length; i++) s.push(hex2(b[i]));
+  return s.join(' ');
+}
+
+function fcOf(m) { return m === 'ReadInputRegisters' ? 0x04 : 0x03; }
+
+function dbgTx(m) {
+  var f = withCrc([CONFIG.SLAVE_ID & 0xFF, fcOf(m), (READ_ADDR >> 8) & 0xFF, READ_ADDR & 0xFF,
+                   (READ_QTY >> 8) & 0xFF, READ_QTY & 0xFF]);
+  log('TX ' + m + ' sid=' + CONFIG.SLAVE_ID + ' addr=' + READ_ADDR + ' qty=' + READ_QTY);
+  log('TX [' + f.length + '] ' + hexLine(f, 0, f.length));
+}
+
+function dbgRx(m, v) {
+  var f = [CONFIG.SLAVE_ID & 0xFF, fcOf(m), (v.length * 2) & 0xFF], i;
+  for (i = 0; i < v.length; i++) { f.push((v[i] >> 8) & 0xFF); f.push(v[i] & 0xFF); }
+  withCrc(f);
+  log('RX [' + f.length + '] ' + hexLine(f, 0, 3) + ' …');
+  for (i = 3; i < f.length - 2; i += 24) log('RX   ' + hexLine(f, i, Math.min(i + 24, f.length - 2)));
+  log('RX   CRC ' + hexLine(f, f.length - 2, f.length));
+  for (i = 0; i < v.length; i += 10) {
+    var r = [], k;
+    for (k = i; k < i + 10 && k < v.length; k++) r.push(v[k]);
+    var a = String(READ_ADDR + i);
+    while (a.length < 3) a = ' ' + a;
+    log('RX   reg ' + a + ': ' + r.join(' '));
+  }
 }
 
 // ============================================================================
@@ -113,12 +162,12 @@ function setupSerial(done) {
       });
       return;
     }
-    Shelly.call('Serial.SetConfig', {
-      id: CONFIG.SERIAL_ID,
-      config: { mode: 'mb_client', serial: { baud: CONFIG.BAUD, format: CONFIG.FORMAT } },
-    }, function (r, ec3, em3) {
+    var scfg = { mode: 'mb_client', serial: { baud: CONFIG.BAUD, format: CONFIG.FORMAT } };
+    if (CONFIG.DEBUG) log('Serial.SetConfig ' + JSON.stringify(scfg));
+    Shelly.call('Serial.SetConfig', { id: CONFIG.SERIAL_ID, config: scfg }, function (r, ec3, em3) {
       if (ec3 !== 0) { log('Serial.SetConfig Fehler: ' + em3); return; }
-      log('Serial: ' + CONFIG.BAUD + ' ' + CONFIG.FORMAT + ', Slave ' + CONFIG.SLAVE_ID);
+      log('Serial: ' + CONFIG.BAUD + ' ' + CONFIG.FORMAT + ', Slave ' + CONFIG.SLAVE_ID +
+          (CONFIG.DEBUG ? ', DEBUG an' : ''));
       done();
     });
   });
@@ -138,22 +187,16 @@ function setupComponents(done) {
   var i, nNum = Math.min(CONFIG.MAX_NUMBERS, ENTITIES.length);
   var steps = [];
 
-  // 1. überzählige number-Komponenten früherer Versionen entfernen (geben Plätze frei)
+  // 1. Altlasten früherer Versionen entfernen (geben Plätze frei)
+  if (Virtual.getHandle('boolean:' + CONFIG.FIRST_ID)) steps.push({ del: 'boolean:' + CONFIG.FIRST_ID });
   for (i = nNum; i < 30; i++) {
-    if (Virtual.getHandle('number:' + (CONFIG.FIRST_ID + i))) {
-      steps.push({ del: 'number:' + (CONFIG.FIRST_ID + i) });
-    }
+    if (Virtual.getHandle('number:' + (CONFIG.FIRST_ID + i))) steps.push({ del: 'number:' + (CONFIG.FIRST_ID + i) });
   }
-  // 2. Debug-Schalter, Messwerte, zuletzt die Gruppe (verzichtbar, falls sie zum Limit zählt)
-  steps.push({
-    type: 'boolean', id: CONFIG.FIRST_ID, cfg: {
-      name: 'Debug', default_value: false, persisted: true,
-      meta: { ui: { view: 'toggle', titles: ['Aus', 'An'] } },
-    },
-  });
+  // 2. Messwerte, zuletzt die Gruppe (verzichtbar, falls sie zum Limit zählt)
   for (i = 0; i < nNum; i++) {
     ENTITIES[i].key = 'number:' + (CONFIG.FIRST_ID + i);
-    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i]), ent: ENTITIES[i] });
+    USED.push(ENTITIES[i]);
+    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i]) });
   }
   steps.push({ type: 'group', id: CONFIG.FIRST_ID, cfg: { name: CONFIG.GROUP_NAME } });
 
@@ -161,10 +204,7 @@ function setupComponents(done) {
 
   function next(k) {
     if (k >= steps.length) {
-      debugHandle = Virtual.getHandle('boolean:' + CONFIG.FIRST_ID);
-      for (i = 0; i < nNum; i++) {
-        ENTITIES[i].h = Virtual.getHandle(ENTITIES[i].key);
-      }
+      for (i = 0; i < USED.length; i++) USED[i].h = Virtual.getHandle(USED[i].key);
       if (!Virtual.getHandle('group:' + CONFIG.FIRST_ID)) { done(); return; }
       Shelly.call('Group.Set', { id: CONFIG.FIRST_ID, value: members }, function () { done(); });
       return;
@@ -183,15 +223,14 @@ function setupComponents(done) {
     var key = s.type + ':' + s.id;
     var cb = function (r, ec, em) {
       if (ec !== 0) {
-        log(key + ' nicht angelegt (' + em + ') – Limit erreicht? MAX_NUMBERS verringern.');
-      } else if (s.type !== 'group') {
+        log(key + ' nicht angelegt (' + em + ')' + (s.type === 'number' ? ' – Limit erreicht? MAX_NUMBERS verringern.' : ''));
+      } else if (s.type === 'number') {
         members.push(key);
       }
       go();
     };
     if (Virtual.getHandle(key)) {
-      var m = s.type === 'group' ? 'Group' : (s.type === 'boolean' ? 'Boolean' : 'Number');
-      Shelly.call(m + '.SetConfig', { id: s.id, config: s.cfg }, cb);
+      Shelly.call(s.type === 'group' ? 'Group.SetConfig' : 'Number.SetConfig', { id: s.id, config: s.cfg }, cb);
     } else {
       Shelly.call('Virtual.Add', { type: s.type, id: s.id, config: s.cfg }, cb);
     }
@@ -208,42 +247,36 @@ var method = CONFIG.FC === 'input' ? 'ReadInputRegisters' : 'ReadHoldingRegister
 function poll() {
   if (busy) return;
   busy = true;
+  var m = method;
+  if (CONFIG.DEBUG) dbgTx(m);
 
-  var dbgOn = isDebug();
-  if (dbgOn !== lastDebug) {
-    log('Debug ' + (dbgOn ? 'AN' : 'AUS'));
-    lastDebug = dbgOn;
-  }
-
-  Shelly.call('MbRtuClient.' + method, {
+  Shelly.call('MbRtuClient.' + m, {
     id: CONFIG.SERIAL_ID, sid: CONFIG.SLAVE_ID, addr: READ_ADDR, qty: READ_QTY,
   }, function (res, ec, em) {
     busy = false;
     if (ec !== 0 || !res || !res.values) {
       fails++;
-      if (dbgOn) log(method + ' Fehler: ' + em);
+      if (CONFIG.DEBUG) log('RX Fehler ' + ec + ': ' + em);
       if (CONFIG.FC === 'auto') {
         method = method === 'ReadHoldingRegisters' ? 'ReadInputRegisters' : 'ReadHoldingRegisters';
       }
       if (fails === 1 || fails % 12 === 0) log('Keine Antwort (' + fails + 'x): TX/RX, A/B, Baudrate, Slave-ID prüfen');
       return;
     }
-    if (fails > 0) log('Verbindung ok (' + method + ')');
+    if (fails > 0) log('Verbindung ok (' + m + ')');
     fails = 0;
 
-    var v = res.values, line = [], i;
-    for (i = 0; i < ENTITIES.length; i++) {
-      var e = ENTITIES[i];
+    var v = res.values, i;
+    if (CONFIG.DEBUG) dbgRx(m, v);
+
+    for (i = 0; i < USED.length; i++) {
+      var e = USED[i];
       var raw = decode(v, e.off, e.type);
-      if (raw === null) continue;
+      if (raw === null || !e.h) continue;
       var val = round(raw * (e.scale === 'E' ? CONFIG.ENERGY_SCALE : e.scale), e.dec);
       if (val < e.min) val = e.min;
       if (val > e.max) val = e.max;
-      if (e.h) e.h.setValue(val);
-      if (dbgOn) line.push(e.name + '=' + val + e.unit);
-    }
-    if (dbgOn) {
-      for (i = 0; i < line.length; i += 6) log(line.slice(i, i + 6).join(' | '));
+      e.h.setValue(val);
     }
   });
 }
@@ -253,8 +286,7 @@ function poll() {
 // ============================================================================
 setupSerial(function () {
   setupComponents(function () {
-    log('Läuft: ' + ENTITIES.length + ' Werte, ' + Math.min(CONFIG.MAX_NUMBERS, ENTITIES.length) +
-        ' als Komponente, alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
+    log('Läuft: ' + USED.length + ' Werte als Komponente, alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
     Timer.set(500, false, poll);
     Timer.set(CONFIG.POLL_INTERVAL, true, poll);
   });
