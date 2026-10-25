@@ -178,7 +178,7 @@ function setupSerial(done) {
 // ============================================================================
 function numberCfg(e) {
   return {
-    name: e.name, default_value: 0, min: e.min, max: e.max, persisted: false,
+    name: e.name, default_value: Math.min(Math.max(0, e.min), e.max), min: e.min, max: e.max, persisted: false,
     meta: { ui: { view: 'label', unit: e.unit, step: Math.pow(10, -e.dec) } },
   };
 }
@@ -223,7 +223,8 @@ function setupComponents(done) {
     var key = s.type + ':' + s.id;
     var cb = function (r, ec, em) {
       if (ec !== 0) {
-        log(key + ' nicht angelegt (' + em + ')' + (s.type === 'number' ? ' – Limit erreicht? MAX_NUMBERS verringern.' : ''));
+        var limit = em && /limit|max|too many|no space|full/i.test(em) && !/argument/i.test(em);
+        log(key + ' nicht angelegt: ' + em + (limit ? ' – Limit erreicht? MAX_NUMBERS verringern.' : ''));
       } else if (s.type === 'number') {
         members.push(key);
       }
