@@ -1,6 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant
- * Version: 0.11.1 (2026-10-25)
+ * Version: 0.12.0 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -30,7 +30,10 @@
  *   virtuellen Komponenten) als JSON:
  *     <MQTT_TOPIC>/state  {"p_l1":57,"p":131,"e_imp":10772.29,"u_l1":236.4,...}
  *     <MQTT_TOPIC>/raw    {"addr":0,"values":[2364,2331,...]}   (MQTT_RAW: 1)
- *   Die Verbindung zum Broker wird in der Pill eingerichtet (Settings -> MQTT).
+ *   Die Verbindung zum Broker richtet das Script selbst ein (MQTT_SETUP: 1,
+ *   siehe MQTT-BROKER unten) – oder manuell in der Pill (Settings -> MQTT).
+ *   Geänderte Broker-Einstellungen übernimmt die Pill erst nach einem Neustart;
+ *   das Script startet sie dafür einmal neu ("Run on startup" muss aktiv sein).
  *
  * HOME ASSISTANT DISCOVERY
  *   HA_DISCOVERY: 1 meldet alle Werte als Sensoren bei Home Assistant an
@@ -47,7 +50,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.11.1';
+var VERSION = '0.12.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -71,6 +74,16 @@ var CONFIG = {
   HA_DISCOVERY: 1,      // 1 = Home-Assistant-Discovery senden, 0 = aus
   HA_PREFIX: 'homeassistant', // Discovery-Prefix in Home Assistant
   HA_DEVICE_NAME: 'DTSU5886', // Gerätename in Home Assistant
+
+  // --- MQTT-BROKER (Einrichtung der Pill durch das Script) ---
+  MQTT_SETUP: 1,        // 1 = Broker-Einstellungen der Pill setzen, 0 = nicht anfassen
+  MQTT_SERVER: '',      // 'host:port', z.B. '192.168.1.10:1883' – leer = nicht einrichten
+  MQTT_USER: '',        // Benutzer ('' = ohne Anmeldung)
+  MQTT_PASS: '',        // Passwort
+  MQTT_CLIENT_ID: '',   // '' = Geräte-ID der Pill
+  MQTT_PREFIX: '',      // Topic-Prefix der Pill ('' = Geräte-ID), u.a. für <prefix>/online
+  MQTT_SSL: '',         // '' = ohne TLS, '*' = TLS ohne Prüfung, 'ca.pem' = TLS mit CA
+  MQTT_AUTO_REBOOT: 1,  // 1 = nach Änderung automatisch neu starten
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
@@ -443,16 +456,88 @@ function poll() {
 }
 
 // ============================================================================
+// MQTT-BROKER EINRICHTEN
+// ============================================================================
+function orNull(x) { return x ? x : null; }
+
+// einfache Prüfsumme der Soll-Konfiguration (Passwort nicht im Klartext speichern)
+function fingerprint(c) {
+  var t = c.server + '|' + c.user + '|' + CONFIG.MQTT_PASS + '|' + c.client_id + '|' + c.topic_prefix + '|' + c.ssl_ca;
+  var h = 7, i;
+  for (i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 1000000007;
+  return 'v1-' + h;
+}
+
+function mqttSetup(done) {
+  if (!CONFIG.MQTT || !CONFIG.MQTT_SETUP) { done(); return; }
+  if (!CONFIG.MQTT_SERVER) {
+    log('MQTT_SERVER leer – Broker-Einstellungen der Pill bleiben unverändert');
+    done();
+    return;
+  }
+  var want = {
+    enable: true,
+    server: CONFIG.MQTT_SERVER,
+    user: orNull(CONFIG.MQTT_USER),
+    client_id: orNull(CONFIG.MQTT_CLIENT_ID),
+    topic_prefix: orNull(CONFIG.MQTT_PREFIX),
+    ssl_ca: orNull(CONFIG.MQTT_SSL),
+  };
+  var fp = fingerprint(want);
+  var cur = Shelly.getComponentConfig('mqtt') || {};
+
+  Shelly.call('KVS.Get', { key: 'dtsu_mqtt_fp' }, function (r, ec) {
+    var stored = (ec === 0 && r) ? r.value : null;
+    var same = cur.enable === true && cur.server === want.server && cur.user === want.user &&
+               cur.ssl_ca === want.ssl_ca && stored === fp &&
+               (want.client_id === null || cur.client_id === want.client_id) &&
+               (want.topic_prefix === null || cur.topic_prefix === want.topic_prefix);
+    if (same) {
+      if (CONFIG.DEBUG) log('MQTT-Einstellungen aktuell (' + want.server + ')');
+      done();
+      return;
+    }
+    var cfg = {};
+    for (var k in want) cfg[k] = want[k];
+    cfg.pass = orNull(CONFIG.MQTT_PASS);
+    log('Setze MQTT: ' + want.server + (want.user ? ', Benutzer ' + want.user : '') +
+        (want.ssl_ca ? ', TLS' : ''));
+    Shelly.call('Mqtt.SetConfig', { config: cfg }, function (res, ec2, em2) {
+      if (ec2 !== 0) {
+        log('Mqtt.SetConfig Fehler: ' + em2);
+        done();
+        return;
+      }
+      Shelly.call('KVS.Set', { key: 'dtsu_mqtt_fp', value: fp }, function () {
+        if (res && res.restart_required) {
+          if (CONFIG.MQTT_AUTO_REBOOT) {
+            log('MQTT gesetzt – Neustart in 3 s (Script muss "Run on startup" haben)');
+            Timer.set(3000, false, function () { Shelly.call('Shelly.Reboot', {}); });
+            return;   // nicht weitermachen, Pill startet neu
+          }
+          log('MQTT gesetzt – bitte Pill neu starten, damit die Einstellungen aktiv werden');
+        } else {
+          log('MQTT gesetzt');
+        }
+        done();
+      });
+    });
+  });
+}
+
+// ============================================================================
 // START
 // ============================================================================
 log('DTSU5886 Pill-Script v' + VERSION);
-setupSerial(function () {
-  setupComponents(function () {
-    log('Läuft: ' + USED.length + ' Werte als Komponente' +
-        (mqttEnabled() ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : ', MQTT aus') +
-        ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
-    haSetup();
-    Timer.set(500, false, poll);
-    Timer.set(CONFIG.POLL_INTERVAL, true, poll);
+mqttSetup(function () {
+  setupSerial(function () {
+    setupComponents(function () {
+      log('Läuft: ' + USED.length + ' Werte als Komponente' +
+          (mqttEnabled() ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : ', MQTT aus') +
+          ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
+      haSetup();
+      Timer.set(500, false, poll);
+      Timer.set(CONFIG.POLL_INTERVAL, true, poll);
+    });
   });
 });

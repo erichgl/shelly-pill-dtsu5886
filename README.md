@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.11.1` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.12.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -73,7 +73,28 @@ Mit `MQTT: 1` (Standard) veröffentlicht das Script bei jeder Abfrage **alle** W
 | `e_imp`, `e_exp`, `e_net` | Energie Bezug / Einspeisung / netto | kWh |
 
 Einstellungen im Script: `MQTT` (0/1), `MQTT_TOPIC` (Basis-Topic), `MQTT_RAW` (0/1), `MQTT_RETAIN` (0/1).
-Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerichtet; das Script nutzt diese Verbindung. Ist MQTT in der Pill ausgeschaltet, läuft das Script ohne MQTT weiter und meldet einmalig „MQTT in der Pill deaktiviert“.
+Ist MQTT in der Pill ausgeschaltet, läuft das Script ohne MQTT weiter und meldet einmalig „MQTT in der Pill deaktiviert“.
+
+### Broker-Einrichtung durch das Script
+
+Die MQTT-Verbindung der Pill muss nicht von Hand eingerichtet werden – das Script erledigt das selbst:
+
+```js
+  MQTT_SETUP: 1,                    // Broker-Einstellungen der Pill setzen
+  MQTT_SERVER: '192.168.1.10:1883', // Broker host:port
+  MQTT_USER: 'ha',                  // '' = ohne Anmeldung
+  MQTT_PASS: 'geheim',
+  MQTT_CLIENT_ID: '',               // '' = Geräte-ID
+  MQTT_PREFIX: '',                  // '' = Geräte-ID
+  MQTT_SSL: '',                     // '' = ohne TLS, '*' = TLS ohne Prüfung, 'ca.pem' = TLS mit CA
+  MQTT_AUTO_REBOOT: 1,              // nach Änderung automatisch neu starten
+```
+
+- Beim Start vergleicht das Script die Soll-Werte mit der aktuellen Konfiguration der Pill (das Passwort über eine Prüfsumme im KVS). Nur bei einer Abweichung wird `Mqtt.SetConfig` aufgerufen.
+- Die Pill übernimmt MQTT-Einstellungen erst nach einem **Neustart**. Mit `MQTT_AUTO_REBOOT: 1` startet das Script sie einmal neu – dafür muss beim Script **„Run on startup“** aktiv sein. Danach sind die Werte gleich und es gibt keinen weiteren Neustart.
+- `MQTT_SERVER: ''` (Standard) = Broker-Einstellungen der Pill bleiben unangetastet.
+
+> ⚠️ Das Passwort steht im Klartext im Script und ist für jeden mit Zugriff auf die Weboberfläche der Pill lesbar. Ein Script mit echtem Passwort nicht ins Git-Repository einchecken.
 
 ## Home Assistant
 
