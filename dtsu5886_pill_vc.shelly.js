@@ -1,6 +1,7 @@
 /**
- * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components
- * Version: 0.9.0 (2026-10-25)
+ * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT
+ * Version: 0.10.0 (2026-10-25)
+ * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
  *
@@ -12,8 +13,8 @@
  *   7     Wirkleistung gesamt   W     (8-10: L1-L3)
  *   11    Blindleistung gesamt  var   (12-14: L1-L3)
  *   15    Scheinleistung gesamt VA    (16-18: L1-L3)
- *   19    Leistungsfaktor ges.  x0.001
- *   26    Frequenz              x0.01 Hz
+ *   19    Leistungsfaktor ges.  x0.001 (20-22: L1-L3)
+ *   26    Frequenz              x0.01 Hz (27-28: weitere Phasen)
  *   29-30 Energie Bezug         32 Bit, x ENERGY_SCALE kWh
  *   39-40 Energie Einspeisung   32 Bit, x ENERGY_SCALE kWh
  *   49-50 Energie netto         32 Bit, x ENERGY_SCALE kWh
@@ -24,6 +25,13 @@
  *     group:200       Gruppe (entfällt, falls kein Platz mehr frei ist)
  *   Reihenfolge in ENTITIES = Priorität. Zum Tauschen einfach Zeilen verschieben.
  *
+ * MQTT
+ *   MQTT: 1 veröffentlicht bei jeder Abfrage ALLE Werte (nicht nur die
+ *   virtuellen Komponenten) als JSON:
+ *     <MQTT_TOPIC>/state  {"p_l1":57,"p":131,"e_imp":10772.29,"u_l1":236.4,...}
+ *     <MQTT_TOPIC>/raw    {"addr":0,"values":[2364,2331,...]}   (MQTT_RAW: 1)
+ *   Die Verbindung zum Broker wird in der Pill eingerichtet (Settings -> MQTT).
+ *
  * DEBUG
  *   DEBUG: 1 gibt die serielle Kommunikation in der Script-Konsole aus:
  *     TX  Modbus-Anfrage als Frame (Hex, inkl. CRC)
@@ -33,7 +41,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.9.0';
+var VERSION = '0.10.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -50,35 +58,50 @@ var CONFIG = {
   MAX_NUMBERS: 9,       // Anzahl number-Komponenten (Limit der Pill)
   FIRST_ID: 200,        // IDs: number:200…, group:200
   GROUP_NAME: 'DTSU5886',
+  MQTT: 1,              // 1 = alle Werte per MQTT veröffentlichen, 0 = aus
+  MQTT_TOPIC: 'dtsu5886', // Basis-Topic
+  MQTT_RAW: 1,          // 1 = zusätzlich alle Rohregister unter <topic>/raw
+  MQTT_RETAIN: 1,       // 1 = Nachrichten mit retain-Flag senden
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
 var READ_ADDR = 0;
 var READ_QTY = 51;
 
-// Reihenfolge = Priorität. Die ersten MAX_NUMBERS werden zur virtuellen Komponente.
+// Reihenfolge = Priorität. Die ersten MAX_NUMBERS werden zur virtuellen Komponente,
+// per MQTT werden ALLE Einträge veröffentlicht (Feldname = key).
 // type: 'u16', 's16', 'u32' (High-Word zuerst); scale 'E' = ENERGY_SCALE
 var ENTITIES = [
-  { name: 'Leistung L1',     off: 8,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
-  { name: 'Leistung L2',     off: 9,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
-  { name: 'Leistung L3',     off: 10, type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
-  { name: 'Leistung gesamt', off: 7,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
-  { name: 'Bezug',           off: 29, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
-  { name: 'Spannung L1',     off: 0,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
-  { name: 'Spannung L2',     off: 1,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
-  { name: 'Spannung L3',     off: 2,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
-  { name: 'Frequenz',        off: 26, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
+  { key: 'p_l1',   name: 'Leistung L1',     off: 8,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
+  { key: 'p_l2',   name: 'Leistung L2',     off: 9,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
+  { key: 'p_l3',   name: 'Leistung L3',     off: 10, type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
+  { key: 'p',      name: 'Leistung gesamt', off: 7,  type: 's16', scale: 1,     dec: 0, unit: 'W',   min: -32768, max: 32767 },
+  { key: 'e_imp',  name: 'Bezug',           off: 29, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
+  { key: 'u_l1',   name: 'Spannung L1',     off: 0,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
+  { key: 'u_l2',   name: 'Spannung L2',     off: 1,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
+  { key: 'u_l3',   name: 'Spannung L3',     off: 2,  type: 'u16', scale: 0.1,   dec: 1, unit: 'V',   min: 0,      max: 300 },
+  { key: 'f',      name: 'Frequenz',        off: 26, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
   // --- Reserve: zum Tauschen nach oben schieben ---
-  { name: 'Einspeisung',     off: 39, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
-  { name: 'Energie netto',   off: 49, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
-  { name: 'Strom L1',        off: 3,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
-  { name: 'Strom L2',        off: 4,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
-  { name: 'Strom L3',        off: 5,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
-  { name: 'Leistungsfaktor', off: 19, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
-  { name: 'Blindleistung',   off: 11, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
-  { name: 'Scheinleistung',  off: 15, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 'e_exp',  name: 'Einspeisung',     off: 39, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
+  { key: 'e_net',  name: 'Energie netto',   off: 49, type: 'u32', scale: 'E',   dec: 2, unit: 'kWh', min: 0,      max: 99999999 },
+  { key: 'i_l1',   name: 'Strom L1',        off: 3,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
+  { key: 'i_l2',   name: 'Strom L2',        off: 4,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
+  { key: 'i_l3',   name: 'Strom L3',        off: 5,  type: 'u16', scale: 0.01,  dec: 2, unit: 'A',   min: 0,      max: 120 },
+  { key: 'pf',     name: 'Leistungsfaktor', off: 19, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'q',      name: 'Blindleistung',   off: 11, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 's',      name: 'Scheinleistung',  off: 15, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 'q_l1',   name: 'Blindl. L1',      off: 12, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 'q_l2',   name: 'Blindl. L2',      off: 13, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 'q_l3',   name: 'Blindl. L3',      off: 14, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 's_l1',   name: 'Scheinl. L1',     off: 16, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 's_l2',   name: 'Scheinl. L2',     off: 17, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 's_l3',   name: 'Scheinl. L3',     off: 18, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 'pf_l1',  name: 'Leistungsf. L1',  off: 20, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'pf_l2',  name: 'Leistungsf. L2',  off: 21, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'pf_l3',  name: 'Leistungsf. L3',  off: 22, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'f_2',    name: 'Frequenz 2',      off: 27, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
+  { key: 'f_3',    name: 'Frequenz 3',      off: 28, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
 ];
-
 // ============================================================================
 // HILFSFUNKTIONEN
 // ============================================================================
@@ -198,7 +221,7 @@ function setupComponents(done) {
   }
   // 2. Messwerte, zuletzt die Gruppe (verzichtbar, falls sie zum Limit zählt)
   for (i = 0; i < nNum; i++) {
-    ENTITIES[i].key = 'number:' + (CONFIG.FIRST_ID + i);
+    ENTITIES[i].vc = 'number:' + (CONFIG.FIRST_ID + i);
     USED.push(ENTITIES[i]);
     steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i]) });
   }
@@ -208,7 +231,7 @@ function setupComponents(done) {
 
   function next(k) {
     if (k >= steps.length) {
-      for (i = 0; i < USED.length; i++) USED[i].h = Virtual.getHandle(USED[i].key);
+      for (i = 0; i < USED.length; i++) USED[i].h = Virtual.getHandle(USED[i].vc);
       if (!Virtual.getHandle('group:' + CONFIG.FIRST_ID)) { done(); return; }
       Shelly.call('Group.Set', { id: CONFIG.FIRST_ID, value: members }, function () { done(); });
       return;
@@ -243,6 +266,29 @@ function setupComponents(done) {
 }
 
 // ============================================================================
+// MQTT
+// ============================================================================
+var mqttWarned = false;
+
+function mqttPublish(state, v) {
+  if (!CONFIG.MQTT) return;
+  if (typeof MQTT === 'undefined' || !MQTT.isConnected()) {
+    if (!mqttWarned) log('MQTT nicht verbunden – Broker in der Pill einrichten (Settings -> MQTT)');
+    mqttWarned = true;
+    return;
+  }
+  if (mqttWarned) log('MQTT verbunden');
+  mqttWarned = false;
+  var retain = CONFIG.MQTT_RETAIN ? true : false;
+  var js = JSON.stringify(state);
+  MQTT.publish(CONFIG.MQTT_TOPIC + '/state', js, 0, retain);
+  if (CONFIG.DEBUG) log('MQTT ' + CONFIG.MQTT_TOPIC + '/state ' + js);
+  if (CONFIG.MQTT_RAW) {
+    MQTT.publish(CONFIG.MQTT_TOPIC + '/raw', JSON.stringify({ addr: READ_ADDR, values: v }), 0, retain);
+  }
+}
+
+// ============================================================================
 // ABFRAGE
 // ============================================================================
 var busy = false, fails = 0;
@@ -273,15 +319,16 @@ function poll() {
     var v = res.values, i;
     if (CONFIG.DEBUG) dbgRx(m, v);
 
-    for (i = 0; i < USED.length; i++) {
-      var e = USED[i];
+    var state = {};
+    for (i = 0; i < ENTITIES.length; i++) {
+      var e = ENTITIES[i];
       var raw = decode(v, e.off, e.type);
-      if (raw === null || !e.h) continue;
+      if (raw === null) continue;
       var val = round(raw * (e.scale === 'E' ? CONFIG.ENERGY_SCALE : e.scale), e.dec);
-      if (val < e.min) val = e.min;
-      if (val > e.max) val = e.max;
-      e.h.setValue(val);
+      state[e.key] = val;
+      if (e.h) e.h.setValue(Math.min(Math.max(val, e.min), e.max));
     }
+    mqttPublish(state, v);
   });
 }
 
@@ -291,7 +338,9 @@ function poll() {
 log('DTSU5886 Pill-Script v' + VERSION);
 setupSerial(function () {
   setupComponents(function () {
-    log('Läuft: ' + USED.length + ' Werte als Komponente, alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
+    log('Läuft: ' + USED.length + ' Werte als Komponente' +
+        (CONFIG.MQTT ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : '') +
+        ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
     Timer.set(500, false, poll);
     Timer.set(CONFIG.POLL_INTERVAL, true, poll);
   });

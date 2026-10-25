@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.9.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.10.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ⚠️ **Status:** Registerbelegung am L-home DTSU5886 per PC-Modbus-Tool ausgelesen und plausibilisiert. Test auf der Pill steht noch aus; der Energie-Faktor (0,01 oder 0,001 kWh) ist noch mit dem Display abzugleichen (`ENERGY_SCALE`).
 
@@ -44,6 +44,36 @@ Reserve (in `ENTITIES` vorhanden, aber ohne Komponente):
 ```
 
 Weitere Register: 12–14 Blindleistung L1–L3, 16–18 Scheinleistung L1–L3, 20–22 Leistungsfaktor L1–L3, 26–28 Frequenz je Phase. 32-Bit-Werte: High-Word zuerst. Das Script liest alles mit einer Anfrage (Register 0–50) und erkennt FC03/FC04 automatisch (`FC: 'auto'`).
+
+## MQTT
+
+Mit `MQTT: 1` (Standard) veröffentlicht das Script bei jeder Abfrage **alle** Werte – nicht nur die 9 virtuellen Komponenten:
+
+| Topic | Inhalt |
+|---|---|
+| `dtsu5886/state` | alle 28 Messwerte als JSON |
+| `dtsu5886/raw` | alle Rohregister 0–50 (`MQTT_RAW: 1`) |
+
+```json
+{"p_l1":57,"p_l2":0,"p_l3":72,"p":131,"e_imp":10772.29,"u_l1":236.4,"u_l2":233.1,"u_l3":235.7,
+ "f":49.99,"e_exp":0.29,"e_net":10772,"i_l1":0.51,"i_l2":0.24,"i_l3":0.59,"pf":0.529,"q":199,"s":319,
+ "q_l1":64,"q_l2":56,"q_l3":78,"s_l1":122,"s_l2":57,"s_l3":139,"pf_l1":0.661,"pf_l2":0.049,"pf_l3":0.678,
+ "f_2":49.99,"f_3":49.99}
+```
+
+| Feld | Wert | Einheit |
+|---|---|---|
+| `p`, `p_l1`–`p_l3` | Wirkleistung gesamt / je Phase | W |
+| `q`, `q_l1`–`q_l3` | Blindleistung gesamt / je Phase | var |
+| `s`, `s_l1`–`s_l3` | Scheinleistung gesamt / je Phase | VA |
+| `pf`, `pf_l1`–`pf_l3` | Leistungsfaktor gesamt / je Phase | – |
+| `u_l1`–`u_l3` | Spannung | V |
+| `i_l1`–`i_l3` | Strom | A |
+| `f`, `f_2`, `f_3` | Frequenz | Hz |
+| `e_imp`, `e_exp`, `e_net` | Energie Bezug / Einspeisung / netto | kWh |
+
+Einstellungen im Script: `MQTT` (0/1), `MQTT_TOPIC` (Basis-Topic), `MQTT_RAW` (0/1), `MQTT_RETAIN` (0/1).
+Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerichtet; das Script nutzt diese Verbindung. Ist sie nicht aktiv, meldet die Konsole einmalig „MQTT nicht verbunden“.
 
 ## Hardware
 
@@ -117,7 +147,7 @@ Das Script stellt die Pill beim ersten Start selbst auf den Modus `mb_client` um
 
 ### 4. Kontrolle
 
-In der Script-Konsole erscheint `Läuft: 9 Werte als Komponente, alle 7 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
+In der Script-Konsole erscheint `Läuft: 9 Werte als Komponente, 28 per MQTT (dtsu5886), alle 7 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
 
 ### 5. Belegung testen
 
@@ -161,4 +191,4 @@ Die Register werden in Blöcken (`BLOCKS`) gelesen – eine Modbus-Anfrage pro B
 
 ## Lizenz
 
-[GNU AGPL-3.0](LICENSE)
+(c) 2026 erich.grassl@glw8.at – [GNU AGPL-3.0](LICENSE)
