@@ -4,22 +4,26 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> ⚠️ **Status:** Die Registerbelegung entspricht der verbreiteten Chint-DTSU666-kompatiblen Map. Am L-home DTSU5886 wird sie noch verifiziert – siehe [Belegung testen](#5-belegung-testen).
+> ⚠️ **Status:** Registerbelegung am L-home DTSU5886 per PC-Modbus-Tool ausgelesen und plausibilisiert. Test auf der Pill steht noch aus; der Energie-Faktor (0,01 oder 0,001 kWh) ist noch mit dem Display abzugleichen (`ENERGY_SCALE`).
 
 ## Messwerte
 
-| Virtual Component | Wert | Register |
-|---|---|---|
-| `group:200` | Gruppe „DTSU5886“ | – |
-| `number:200–202` | Spannung L1/L2/L3 (V) | 0x2006 / 0x2008 / 0x200A |
-| `number:203–205` | Strom L1/L2/L3 (A) | 0x200C / 0x200E / 0x2010 |
-| `number:206` | Wirkleistung gesamt (W) | 0x2012 |
-| `number:207–209` | Wirkleistung L1/L2/L3 (W) | 0x2014 / 0x2016 / 0x2018 |
-| `number:210` | Frequenz (Hz) | 0x2044 |
-| `number:211` | Bezug (kWh) | 0x101E |
-| `number:212` | Einspeisung (kWh) | 0x1028 |
+| Virtual Component | Wert | Register | Format |
+|---|---|---|---|
+| `group:200` | Gruppe „DTSU5886“ | – | – |
+| `number:200–202` | Spannung L1/L2/L3 (V) | 0 / 1 / 2 | u16 × 0,1 |
+| `number:203–205` | Strom L1/L2/L3 (A) | 3 / 4 / 5 | u16 × 0,01 |
+| `number:206` | Wirkleistung gesamt (W) | 7 | s16 |
+| `number:207–209` | Wirkleistung L1/L2/L3 (W) | 8 / 9 / 10 | s16 |
+| `number:210` | Blindleistung gesamt (var) | 11 | s16 |
+| `number:211` | Scheinleistung gesamt (VA) | 15 | u16 |
+| `number:212` | Leistungsfaktor gesamt | 19 | s16 × 0,001 |
+| `number:213` | Frequenz (Hz) | 26 | u16 × 0,01 |
+| `number:214` | Bezug (kWh) | 29–30 | u32 × `ENERGY_SCALE` |
+| `number:215` | Einspeisung (kWh) | 39–40 | u32 × `ENERGY_SCALE` |
+| `number:216` | Energie netto (kWh) | 49–50 | u32 × `ENERGY_SCALE` |
 
-Alle Register: Funktionscode 0x03 (Holding), Float32 Big Endian.
+Weitere Register: 12–14 Blindleistung L1–L3, 16–18 Scheinleistung L1–L3, 20–22 Leistungsfaktor L1–L3, 26–28 Frequenz je Phase. 32-Bit-Werte: High-Word zuerst. Das Script liest alles mit einer Anfrage (Register 0–50) und erkennt FC03/FC04 automatisch (`FC: 'auto'`).
 
 ## Hardware
 
@@ -105,17 +109,17 @@ Das Script stellt die Pill beim ersten Start selbst auf den Modus `mb_client` um
 
 ### 4. Kontrolle
 
-In der Script-Konsole erscheint `Läuft: 13 Werte alle 5 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
+In der Script-Konsole erscheint `Läuft: 17 Werte alle 5 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
 
 ### 5. Belegung testen
 
 Ohne Script (Pill muss im Modus `mb_client` sein):
 
 ```
-http://<pill-ip>/rpc/MbRtuClient.ReadHoldingRegisters?id=0&sid=1&addr=8198&qty=2
+http://<pill-ip>/rpc/MbRtuClient.ReadHoldingRegisters?id=0&sid=1&addr=0&qty=3
 ```
 
-Die zwei Werte als Float32 interpretiert sollten etwa `2300` ergeben (= 230,0 V × 10). Kommt nichts Sinnvolles zurück, alternativ `addr=0` sowie `MbRtuClient.ReadInputRegisters` testen.
+Erwartet: drei Werte um `2300` (= 230,0 V × 10) – die Spannungen L1–L3. Kommt ein Fehler zurück, dasselbe mit `MbRtuClient.ReadInputRegisters` testen.
 
 ## Fehlersuche
 
