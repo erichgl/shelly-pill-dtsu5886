@@ -97,7 +97,7 @@ Möglichkeiten für den Anschluss:
 
 Im Menü des Zählers prüfen bzw. einstellen:
 
-- Adresse (`Addr`) – Standard meist `1`
+- Adresse (`Addr`) – hier `8` (Standard meist `1`)
 - Baudrate (`bAud`) – meist `9600`
 - Parität / Format – meist `8N1`
 - Protokoll – **Modbus** (nicht DL/T645)
@@ -115,14 +115,14 @@ Das Script stellt die Pill beim ersten Start selbst auf den Modus `mb_client` um
 
 ### 4. Kontrolle
 
-In der Script-Konsole erscheint `Läuft: 9 Werte als Komponente, alle 5 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
+In der Script-Konsole erscheint `Läuft: 9 Werte als Komponente, alle 7 s`, danach die Gruppe „DTSU5886“ in der Shelly-App.
 
 ### 5. Belegung testen
 
 Ohne Script (Pill muss im Modus `mb_client` sein):
 
 ```
-http://<pill-ip>/rpc/MbRtuClient.ReadHoldingRegisters?id=0&sid=1&addr=0&qty=3
+http://<pill-ip>/rpc/MbRtuClient.ReadHoldingRegisters?id=0&sid=8&addr=0&qty=3
 ```
 
 Erwartet: drei Werte um `2300` (= 230,0 V × 10) – die Spannungen L1–L3. Kommt ein Fehler zurück, dasselbe mit `MbRtuClient.ReadInputRegisters` testen.

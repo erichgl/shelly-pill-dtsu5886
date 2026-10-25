@@ -37,12 +37,12 @@
 // ============================================================================
 var CONFIG = {
   DEBUG: 0,             // 1 = serielle Kommunikation (TX/RX) in der Konsole, 0 = aus
-  SLAVE_ID: 1,          // Modbus-Adresse am Zähler
+  SLAVE_ID: 8,          // Modbus-Adresse am Zähler
   BAUD: 9600,           // Baudrate am Zähler
   FORMAT: '8N1',        // Datenbits/Parität/Stopp, z.B. '8E1'
   SERIAL_ID: 0,         // Serial- / MbRtuClient-Instanz der Pill
   FC: 'auto',           // 'holding' (FC03), 'input' (FC04) oder 'auto'
-  POLL_INTERVAL: 5000,  // ms
+  POLL_INTERVAL: 7000,  // ms
   ENERGY_SCALE: 0.01,   // kWh pro Zählschritt – mit Display vergleichen, ggf. 0.001
   MAX_NUMBERS: 9,       // Anzahl number-Komponenten (Limit der Pill)
   FIRST_ID: 200,        // IDs: number:200…, group:200
