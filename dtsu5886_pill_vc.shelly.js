@@ -1,6 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant + HTTP
- * Version: 0.15.0 (2026-10-25)
+ * Version: 0.15.1 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -71,7 +71,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.15.0';
+var VERSION = '0.15.1';
 
 // ============================================================================
 // KONFIGURATION
@@ -116,11 +116,11 @@ var STATS = 'measurement';
 
 // Web-Icon pro Einheit (Zahl = meta.ui.webIcon, null = nicht ändern / in der Weboberfläche gesetztes Icon behalten)
 var ICONS = {
-  'W': null,      // Leistung
-  'kWh': null,    // Energie
-  'V': null,      // Spannung
+  'W': 22,        // Leistung
+  'kWh': 15,      // Energie
+  'V': 7,         // Spannung
   'A': null,      // Strom
-  'Hz': null,     // Frequenz
+  'Hz': 17,       // Frequenz
   'var': null,    // Blindleistung
   'VA': null,     // Scheinleistung
   '': null,       // Leistungsfaktor

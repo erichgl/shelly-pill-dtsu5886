@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.15.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.15.1` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -55,10 +55,18 @@ Jede virtuelle Komponente kann ein Icon in der Weboberfläche/App bekommen (`met
 
 Optional fest im Script hinterlegen (z. B. für eine Neuinstallation), pro Einheit:
 
+Im Script sind bereits hinterlegt (an der Pill ermittelt):
+
+| Einheit | Wert | webIcon |
+|---|---|---|
+| W | Leistung | 22 |
+| kWh | Energie | 15 |
+| V | Spannung | 7 |
+| Hz | Frequenz | 17 |
+
 ```js
 var ICONS = {
-  'W': 5,       // Leistung   – Zahl aus der Konsole
-  'kWh': null,  // null = nicht ändern
+  'W': 22, 'kWh': 15, 'V': 7, 'A': null, 'Hz': 17,   // null = nicht ändern
   ...
 };
 ```
