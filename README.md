@@ -39,13 +39,44 @@ DTSU5886  B  ────────────  B
                            GND     ─────────────  GND        Pill
 ```
 
-| Pill-Terminal | Micro-USB-Pin | Funktion |
-|---|---|---|
-| IO1 | Pin 2 (D−) | UART TX |
-| IO2 | Pin 3 (D+) | UART RX |
-| IO3 | Pin 4 (ID) | reserviert – frei lassen |
-| 5V | Pin 1 (VBUS) | Versorgung Modul |
-| GND | Pin 5 | Masse |
+#### Anschluss über den Micro-USB-Port der Pill (ohne 5-Terminal-Add-on)
+
+Die drei IOs der Pill liegen auf dem Micro-USB-Port. Das USB-C-Port oben bleibt für die Stromversorgung der Pill.
+
+```
+            Micro-USB (Pill)
+   ┌─────────────────────────────┐
+   │  1     2     3     4     5  │
+   │ VBUS   D−    D+    ID   GND │
+   └──┬─────┬─────┬─────┬─────┬──┘
+      │     │     │     │     │
+      │     │     │     └─ (frei)
+      │     │     │           │
+     5V    IO1   IO2         GND
+      │    (TX)  (RX)         │
+      │     │     │           │
+      │     │     └──[Teiler]─┼─────  TXD/RO   RS485-Modul
+      │     └─────────────────┼─────  RXD/DI
+      └───────────────────────┼─────  VCC
+                              └─────  GND
+                                      A  ───────  A  DTSU5886
+                                      B  ───────  B
+```
+
+| Micro-USB-Pin | Signal | Pill-Funktion | Aderfarbe USB-Kabel* | → RS485-Modul |
+|---|---|---|---|---|
+| 1 | VBUS | 5 V Ausgang | rot | VCC |
+| 2 | D− | IO1 = UART **TX** | weiß | RXD / DI |
+| 3 | D+ | IO2 = UART **RX** | grün | TXD / RO (ggf. über Spannungsteiler) |
+| 4 | ID | IO3 – reserviert | (meist nicht im Kabel) | frei lassen |
+| 5 | GND | Masse | schwarz | GND |
+
+\* Standard-Farben bei USB-Kabeln. Vor dem Anschließen mit dem Multimeter durchmessen – nicht jeder Hersteller hält sich daran, und reine Ladekabel haben keine D−/D+-Adern.
+
+Möglichkeiten für den Anschluss:
+- **Micro-USB-Breakout-Platine** mit Lötpads oder Schraubklemmen (sauberste Lösung)
+- **abgeschnittenes Micro-USB-Datenkabel** – Adern nach Tabelle oben zuordnen
+- **Shelly 5-Terminal-Add-on** – stellt IO1, IO2, IO3, 5V und GND auf Schraubklemmen bereit
 
 **Wichtig:**
 - Die Pill (ESP32-C3) arbeitet mit **3,3 V** und ist nicht 5-V-tolerant. Bei einem 5-V-Modul den TX-Ausgang des Moduls über einen Spannungsteiler (z. B. 1 kΩ in Serie, 2 kΩ nach GND) an IO2 führen.
