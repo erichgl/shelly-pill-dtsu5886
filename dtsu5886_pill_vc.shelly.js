@@ -1,6 +1,6 @@
 /**
  * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant + HTTP
- * Version: 0.13.0 (2026-10-25)
+ * Version: 0.14.0 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -48,6 +48,15 @@
  *   device_class und state_class (Energie-Dashboard-tauglich). Wird beim Start,
  *   bei jeder MQTT-Verbindung und bei Neustart von Home Assistant gesendet.
  *
+ * WEB-ICONS
+ *   Das Icon einer virtuellen Komponente ist eine Zahl (meta.ui.webIcon).
+ *   - In der Weboberfläche gesetzte Icons bleiben beim Neustart des Scripts erhalten.
+ *   - Beim Start werden die Icon-Nummern in der Konsole ausgegeben ("Icons: ...").
+ *   - Feste Icons pro Einheit: ICONS unten eintragen (null = nicht ändern),
+ *     oder pro Wert in ENTITIES mit  icon: <zahl>.
+ *   Nummer herausfinden: Icon in der Weboberfläche wählen, Script neu starten,
+ *   Nummer aus der Konsole übernehmen.
+ *
  * DEBUG
  *   DEBUG: 1 gibt die serielle Kommunikation in der Script-Konsole aus:
  *     TX  Modbus-Anfrage als Frame (Hex, inkl. CRC)
@@ -57,7 +66,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.13.0';
+var VERSION = '0.14.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -95,6 +104,18 @@ var CONFIG = {
   // --- HTTP ---
   HTTP: 1,              // 1 = JSON-Endpunkt auf der Pill bereitstellen, 0 = aus
   HTTP_ENDPOINT: 'dtsu', // -> http://<pill-ip>/script/<id>/dtsu
+};
+
+// Web-Icon pro Einheit (Zahl = meta.ui.webIcon, null = nicht ändern / in der Weboberfläche gesetztes Icon behalten)
+var ICONS = {
+  'W': null,      // Leistung
+  'kWh': null,    // Energie
+  'V': null,      // Spannung
+  'A': null,      // Strom
+  'Hz': null,     // Frequenz
+  'var': null,    // Blindleistung
+  'VA': null,     // Scheinleistung
+  '': null,       // Leistungsfaktor
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
@@ -236,12 +257,26 @@ function setupSerial(done) {
 // ============================================================================
 // VIRTUELLE KOMPONENTEN
 // ============================================================================
-function numberCfg(e) {
+function wantIcon(e) {
+  if (e.icon !== undefined && e.icon !== null) return e.icon;
+  var i = ICONS[e.unit];
+  return (i !== undefined && i !== null) ? i : null;
+}
+
+// existingIcon: bereits gesetztes webIcon (aus der Weboberfläche) – bleibt erhalten,
+// wenn im Script kein Icon festgelegt ist
+function numberCfg(e, existingIcon) {
+  var ui = { view: 'label', unit: e.unit, step: Math.pow(10, -e.dec) };
+  var icon = wantIcon(e);
+  if (icon === null && existingIcon !== undefined && existingIcon !== null) icon = existingIcon;
+  if (icon !== null) ui.webIcon = icon;
   return {
     name: e.name, default_value: Math.min(Math.max(0, e.min), e.max), min: e.min, max: e.max, persisted: false,
-    meta: { ui: { view: 'label', unit: e.unit, step: Math.pow(10, -e.dec) } },
+    meta: { ui: ui },
   };
 }
+
+var iconInfo = [];
 
 function setupComponents(done) {
   var i, nNum = Math.min(CONFIG.MAX_NUMBERS, ENTITIES.length);
@@ -256,7 +291,7 @@ function setupComponents(done) {
   for (i = 0; i < nNum; i++) {
     ENTITIES[i].vc = 'number:' + (CONFIG.FIRST_ID + i);
     USED.push(ENTITIES[i]);
-    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i]) });
+    steps.push({ type: 'number', id: CONFIG.FIRST_ID + i, cfg: numberCfg(ENTITIES[i], null), ent: ENTITIES[i] });
   }
   steps.push({ type: 'group', id: CONFIG.FIRST_ID, cfg: { name: CONFIG.GROUP_NAME } });
 
@@ -265,6 +300,7 @@ function setupComponents(done) {
   function next(k) {
     if (k >= steps.length) {
       for (i = 0; i < USED.length; i++) USED[i].h = Virtual.getHandle(USED[i].vc);
+      if (iconInfo.length) log('Icons (number:id=webIcon): ' + iconInfo.join(' '));
       if (!Virtual.getHandle('group:' + CONFIG.FIRST_ID)) { done(); return; }
       Shelly.call('Group.Set', { id: CONFIG.FIRST_ID, value: members }, function () { done(); });
       return;
@@ -289,8 +325,17 @@ function setupComponents(done) {
       }
       go();
     };
-    if (Virtual.getHandle(key)) {
-      Shelly.call(s.type === 'group' ? 'Group.SetConfig' : 'Number.SetConfig', { id: s.id, config: s.cfg }, cb);
+    if (Virtual.getHandle(key) && s.type === 'number') {
+      // vorhandenes Icon auslesen und übernehmen
+      Shelly.call('Number.GetConfig', { id: s.id }, function (cur) {
+        var old = (cur && cur.meta && cur.meta.ui) ? cur.meta.ui.webIcon : null;
+        var cfg = numberCfg(s.ent, old);
+        var ic = cfg.meta.ui.webIcon;
+        iconInfo.push(s.id + '=' + (ic === undefined ? '-' : ic));
+        Shelly.call('Number.SetConfig', { id: s.id, config: cfg }, cb);
+      });
+    } else if (Virtual.getHandle(key)) {
+      Shelly.call('Group.SetConfig', { id: s.id, config: s.cfg }, cb);
     } else {
       Shelly.call('Virtual.Add', { type: s.type, id: s.id, config: s.cfg }, cb);
     }

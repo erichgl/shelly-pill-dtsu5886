@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.13.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.14.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -44,6 +44,26 @@ Reserve (in `ENTITIES` vorhanden, aber ohne Komponente):
 ```
 
 Weitere Register: 12–14 Blindleistung L1–L3, 16–18 Scheinleistung L1–L3, 20–22 Leistungsfaktor L1–L3, 26–28 Frequenz je Phase. 32-Bit-Werte: High-Word zuerst. Das Script liest alles mit einer Anfrage (Register 0–50) und erkennt FC03/FC04 automatisch (`FC: 'auto'`).
+
+### Web-Icons
+
+Jede virtuelle Komponente kann ein Icon in der Weboberfläche/App bekommen (`meta.ui.webIcon`, eine Zahl). Shelly dokumentiert nicht, welche Zahl welches Icon ist – deshalb:
+
+1. Icon in der Weboberfläche der Pill bei der Komponente auswählen (z. B. „power“ bei *Leistung L1*).
+2. Script neu starten. In der Konsole steht dann z. B. `Icons (number:id=webIcon): 200=5 201=- …`
+3. **Fertig** – das Script behält in der Weboberfläche gesetzte Icons bei jedem Start bei.
+
+Optional fest im Script hinterlegen (z. B. für eine Neuinstallation), pro Einheit:
+
+```js
+var ICONS = {
+  'W': 5,       // Leistung   – Zahl aus der Konsole
+  'kWh': null,  // null = nicht ändern
+  ...
+};
+```
+
+oder pro Wert in `ENTITIES` mit `icon: <zahl>`.
 
 ## MQTT
 
