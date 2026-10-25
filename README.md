@@ -6,7 +6,7 @@ Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direk
 
 > **Version:** Script `0.10.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
-> ✅ **Status:** Modbus-RTU-Kommunikation zwischen Pill und L-home DTSU5886 funktioniert (mit RS485-Modul mit automatischer Flusssteuerung). Offen: Energie-Faktor (0,01 oder 0,001 kWh) mit dem Display abgleichen (`ENERGY_SCALE`).
+> ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
 ## Messwerte
 

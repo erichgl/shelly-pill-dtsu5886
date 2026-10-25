@@ -7,7 +7,7 @@
  *
  * Nutzt den eingebauten Modbus-RTU-Client der Pill (Pill-Modus "mb_client").
  *
- * REGISTERMAP (ermittelt am L-home DTSU5886, Register 0..50, 16-Bit-Ganzzahlen):
+ * REGISTERMAP (ermittelt und getestet am L-home DTSU5886, Register 0..50, 16-Bit-Ganzzahlen):
  *   0-2   Spannung L1-L3        x0.1  V
  *   3-5   Strom L1-L3           x0.01 A
  *   7     Wirkleistung gesamt   W     (8-10: L1-L3)
@@ -54,7 +54,7 @@ var CONFIG = {
   SERIAL_ID: 0,         // Serial- / MbRtuClient-Instanz der Pill
   FC: 'auto',           // 'holding' (FC03), 'input' (FC04) oder 'auto'
   POLL_INTERVAL: 7000,  // ms
-  ENERGY_SCALE: 0.01,   // kWh pro Zählschritt – mit Display vergleichen, ggf. 0.001
+  ENERGY_SCALE: 0.01,   // kWh pro Zählschritt (am L-home DTSU5886 mit Display geprüft)
   MAX_NUMBERS: 9,       // Anzahl number-Komponenten (Limit der Pill)
   FIRST_ID: 200,        // IDs: number:200…, group:200
   GROUP_NAME: 'DTSU5886',
