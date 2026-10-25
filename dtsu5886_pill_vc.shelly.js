@@ -223,7 +223,9 @@ function setupComponents(done) {
     var key = s.type + ':' + s.id;
     var cb = function (r, ec, em) {
       if (ec !== 0) {
-        var limit = em && /limit|max|too many|no space|full/i.test(em) && !/argument/i.test(em);
+        var lc = String(em || '').toLowerCase();
+        var limit = lc.indexOf('argument') < 0 && (lc.indexOf('limit') >= 0 || lc.indexOf('max') >= 0 ||
+                    lc.indexOf('too many') >= 0 || lc.indexOf('no space') >= 0 || lc.indexOf('full') >= 0);
         log(key + ' nicht angelegt: ' + em + (limit ? ' – Limit erreicht? MAX_NUMBERS verringern.' : ''));
       } else if (s.type === 'number') {
         members.push(key);
