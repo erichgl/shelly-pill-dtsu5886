@@ -114,7 +114,8 @@ function withCrc(b) {
   return b;
 }
 
-function hex2(n) { var s = (n & 0xFF).toString(16).toUpperCase(); return s.length < 2 ? '0' + s : s; }
+var HEXCH = '0123456789ABCDEF';
+function hex2(n) { n = n & 0xFF; return HEXCH.charAt(n >> 4) + HEXCH.charAt(n & 15); }
 
 function hexLine(b, from, to) {
   var s = [], i;
@@ -141,7 +142,7 @@ function dbgRx(m, v) {
   for (i = 0; i < v.length; i += 10) {
     var r = [], k;
     for (k = i; k < i + 10 && k < v.length; k++) r.push(v[k]);
-    var a = String(READ_ADDR + i);
+    var a = '' + (READ_ADDR + i);
     while (a.length < 3) a = ' ' + a;
     log('RX   reg ' + a + ': ' + r.join(' '));
   }
@@ -223,10 +224,7 @@ function setupComponents(done) {
     var key = s.type + ':' + s.id;
     var cb = function (r, ec, em) {
       if (ec !== 0) {
-        var lc = String(em || '').toLowerCase();
-        var limit = lc.indexOf('argument') < 0 && (lc.indexOf('limit') >= 0 || lc.indexOf('max') >= 0 ||
-                    lc.indexOf('too many') >= 0 || lc.indexOf('no space') >= 0 || lc.indexOf('full') >= 0);
-        log(key + ' nicht angelegt: ' + em + (limit ? ' – Limit erreicht? MAX_NUMBERS verringern.' : ''));
+        log(key + ' nicht angelegt (Fehler ' + ec + '): ' + em);
       } else if (s.type === 'number') {
         members.push(key);
       }
