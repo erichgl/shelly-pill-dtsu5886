@@ -1,6 +1,6 @@
 /**
- * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT
- * Version: 0.10.0 (2026-10-25)
+ * DTSU5886 (3-phasig, Modbus RTU) -> Shelly Virtual Components + MQTT + Home Assistant
+ * Version: 0.11.0 (2026-10-25)
  * (c) 2026 erich.grassl@glw8.at
  * Gerät: Shelly "The Pill" (S3SN-0U53X), Firmware >= 2.0.1
  *        eigenes TTL<->RS485-Modul direkt an IO1 (TX) / IO2 (RX)
@@ -32,6 +32,12 @@
  *     <MQTT_TOPIC>/raw    {"addr":0,"values":[2364,2331,...]}   (MQTT_RAW: 1)
  *   Die Verbindung zum Broker wird in der Pill eingerichtet (Settings -> MQTT).
  *
+ * HOME ASSISTANT DISCOVERY
+ *   HA_DISCOVERY: 1 meldet alle Werte als Sensoren bei Home Assistant an
+ *   (homeassistant/sensor/<geraet>/<key>/config, retained) – mit Einheit,
+ *   device_class und state_class (Energie-Dashboard-tauglich). Wird beim Start,
+ *   bei jeder MQTT-Verbindung und bei Neustart von Home Assistant gesendet.
+ *
  * DEBUG
  *   DEBUG: 1 gibt die serielle Kommunikation in der Script-Konsole aus:
  *     TX  Modbus-Anfrage als Frame (Hex, inkl. CRC)
@@ -41,7 +47,7 @@
  *   über die Leitung geht.
  */
 
-var VERSION = '0.10.0';
+var VERSION = '0.11.0';
 
 // ============================================================================
 // KONFIGURATION
@@ -62,6 +68,9 @@ var CONFIG = {
   MQTT_TOPIC: 'dtsu5886', // Basis-Topic
   MQTT_RAW: 1,          // 1 = zusätzlich alle Rohregister unter <topic>/raw
   MQTT_RETAIN: 1,       // 1 = Nachrichten mit retain-Flag senden
+  HA_DISCOVERY: 1,      // 1 = Home-Assistant-Discovery senden, 0 = aus
+  HA_PREFIX: 'homeassistant', // Discovery-Prefix in Home Assistant
+  HA_DEVICE_NAME: 'DTSU5886', // Gerätename in Home Assistant
 };
 
 // Register 0..50 werden mit EINER Anfrage gelesen.
@@ -90,15 +99,15 @@ var ENTITIES = [
   { key: 'pf',     name: 'Leistungsfaktor', off: 19, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
   { key: 'q',      name: 'Blindleistung',   off: 11, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
   { key: 's',      name: 'Scheinleistung',  off: 15, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
-  { key: 'q_l1',   name: 'Blindl. L1',      off: 12, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
-  { key: 'q_l2',   name: 'Blindl. L2',      off: 13, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
-  { key: 'q_l3',   name: 'Blindl. L3',      off: 14, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
-  { key: 's_l1',   name: 'Scheinl. L1',     off: 16, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
-  { key: 's_l2',   name: 'Scheinl. L2',     off: 17, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
-  { key: 's_l3',   name: 'Scheinl. L3',     off: 18, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
-  { key: 'pf_l1',  name: 'Leistungsf. L1',  off: 20, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
-  { key: 'pf_l2',  name: 'Leistungsf. L2',  off: 21, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
-  { key: 'pf_l3',  name: 'Leistungsf. L3',  off: 22, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'q_l1',   name: 'Blindleistung L1', off: 12, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 'q_l2',   name: 'Blindleistung L2', off: 13, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 'q_l3',   name: 'Blindleistung L3', off: 14, type: 's16', scale: 1,     dec: 0, unit: 'var', min: -32768, max: 32767 },
+  { key: 's_l1',   name: 'Scheinleistung L1', off: 16, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 's_l2',   name: 'Scheinleistung L2', off: 17, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 's_l3',   name: 'Scheinleistung L3', off: 18, type: 'u16', scale: 1,     dec: 0, unit: 'VA',  min: 0,      max: 65535 },
+  { key: 'pf_l1',  name: 'Leistungsfaktor L1', off: 20, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'pf_l2',  name: 'Leistungsfaktor L2', off: 21, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
+  { key: 'pf_l3',  name: 'Leistungsfaktor L3', off: 22, type: 's16', scale: 0.001, dec: 3, unit: '',    min: -1,     max: 1 },
   { key: 'f_2',    name: 'Frequenz 2',      off: 27, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
   { key: 'f_3',    name: 'Frequenz 3',      off: 28, type: 'u16', scale: 0.01,  dec: 2, unit: 'Hz',  min: 45,     max: 55 },
 ];
@@ -289,6 +298,77 @@ function mqttPublish(state, v) {
 }
 
 // ============================================================================
+// HOME ASSISTANT DISCOVERY
+// ============================================================================
+var HA_CLASS = { 'W': 'power', 'kWh': 'energy', 'V': 'voltage', 'A': 'current', 'Hz': 'frequency',
+                 'var': 'reactive_power', 'VA': 'apparent_power', '': 'power_factor' };
+var haBusy = false;
+
+function haDevId() {
+  var info = Shelly.getDeviceInfo();
+  return (info && info.id ? info.id : 'pill') + '_dtsu';
+}
+
+function haConfig(e, devId, avail) {
+  var c = {
+    name: e.name,
+    unique_id: devId + '_' + e.key,
+    state_topic: CONFIG.MQTT_TOPIC + '/state',
+    value_template: '{{ value_json.' + e.key + ' }}',
+    device_class: HA_CLASS[e.unit],
+    state_class: e.unit === 'kWh' ? (e.key === 'e_net' ? 'total' : 'total_increasing') : 'measurement',
+    suggested_display_precision: e.dec,
+    device: {
+      identifiers: [devId],
+      name: CONFIG.HA_DEVICE_NAME,
+      manufacturer: 'L-home',
+      model: 'DTSU5886 (Modbus RTU) via Shelly The Pill',
+      sw_version: VERSION,
+    },
+  };
+  if (e.unit !== '') c.unit_of_measurement = e.unit;
+  if (avail) {
+    c.availability_topic = avail;
+    c.payload_available = 'true';
+    c.payload_not_available = 'false';
+  }
+  return c;
+}
+
+function haPublish() {
+  if (!CONFIG.MQTT || !CONFIG.HA_DISCOVERY || haBusy) return;
+  if (typeof MQTT === 'undefined' || !MQTT.isConnected()) return;
+  haBusy = true;
+  var devId = haDevId();
+  var mq = Shelly.getComponentConfig('mqtt');
+  var avail = mq && mq.topic_prefix ? mq.topic_prefix + '/online' : null;
+  function next(i) {
+    if (i >= ENTITIES.length) {
+      haBusy = false;
+      log('Home Assistant Discovery gesendet: ' + ENTITIES.length + ' Sensoren (' + devId + ')');
+      return;
+    }
+    var e = ENTITIES[i];
+    var topic = CONFIG.HA_PREFIX + '/sensor/' + devId + '/' + e.key + '/config';
+    MQTT.publish(topic, JSON.stringify(haConfig(e, devId, avail)), 0, true);
+    if (CONFIG.DEBUG) log('HA ' + topic);
+    Timer.set(150, false, function () { next(i + 1); });
+  }
+  next(0);
+}
+
+function haSetup() {
+  if (!CONFIG.MQTT || !CONFIG.HA_DISCOVERY || typeof MQTT === 'undefined') return;
+  // bei jeder (Wieder-)Verbindung zum Broker
+  MQTT.setConnectHandler(function () { Timer.set(2000, false, haPublish); });
+  // bei Neustart von Home Assistant
+  MQTT.subscribe(CONFIG.HA_PREFIX + '/status', function (topic, msg) {
+    if (msg === 'online') Timer.set(3000, false, haPublish);
+  });
+  Timer.set(1500, false, haPublish);
+}
+
+// ============================================================================
 // ABFRAGE
 // ============================================================================
 var busy = false, fails = 0;
@@ -341,6 +421,7 @@ setupSerial(function () {
     log('Läuft: ' + USED.length + ' Werte als Komponente' +
         (CONFIG.MQTT ? ', ' + ENTITIES.length + ' per MQTT (' + CONFIG.MQTT_TOPIC + ')' : '') +
         ', alle ' + CONFIG.POLL_INTERVAL / 1000 + ' s');
+    haSetup();
     Timer.set(500, false, poll);
     Timer.set(CONFIG.POLL_INTERVAL, true, poll);
   });

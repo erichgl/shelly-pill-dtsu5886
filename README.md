@@ -4,7 +4,7 @@ Liest einen 3-phasigen **DTSU5886**-Stromzähler (z. B. L-home, 3×230/400 V, 10
 
 Statt des offiziellen RS485-Add-ons wird ein **eigenes TTL↔RS485-Modul** direkt an die IOs der Pill angeschlossen. Das Script nutzt den eingebauten Modbus-RTU-Client der Pill (Modus `mb_client`).
 
-> **Version:** Script `0.10.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
+> **Version:** Script `0.11.0` (siehe `VERSION` im Quelltext, wird beim Start in der Konsole ausgegeben).
 
 > ✅ **Status:** Getestet mit L-home DTSU5886 an der Pill (RS485-Modul mit automatischer Flusssteuerung). Registerbelegung und Energie-Faktor (`ENERGY_SCALE: 0.01` → 0,01 kWh pro Zählschritt) mit dem Display abgeglichen.
 
@@ -74,6 +74,25 @@ Mit `MQTT: 1` (Standard) veröffentlicht das Script bei jeder Abfrage **alle** W
 
 Einstellungen im Script: `MQTT` (0/1), `MQTT_TOPIC` (Basis-Topic), `MQTT_RAW` (0/1), `MQTT_RETAIN` (0/1).
 Die Verbindung zum Broker wird in der Pill unter **Settings → MQTT** eingerichtet; das Script nutzt diese Verbindung. Ist sie nicht aktiv, meldet die Konsole einmalig „MQTT nicht verbunden“.
+
+## Home Assistant
+
+Mit `HA_DISCOVERY: 1` (Standard) meldet das Script alle 28 Werte per **MQTT Discovery** bei Home Assistant an. Es erscheint ein Gerät **„DTSU5886“** mit allen Sensoren – ohne YAML-Konfiguration.
+
+- Einheit, `device_class` und `state_class` werden mitgeschickt: Leistung (W), Energie (kWh, `total_increasing`), Spannung, Strom, Frequenz, Blind-/Scheinleistung, Leistungsfaktor.
+- **Bezug** und **Einspeisung** lassen sich direkt im **Energie-Dashboard** als Netzbezug bzw. Netzeinspeisung auswählen.
+- Verfügbarkeit über das `online`-Topic der Pill: ist die Pill offline, werden die Sensoren als „nicht verfügbar“ angezeigt.
+- Die Discovery wird beim Start, bei jeder MQTT-(Wieder-)Verbindung und bei jedem Neustart von Home Assistant (`homeassistant/status` = `online`) erneut gesendet.
+
+Voraussetzungen: MQTT-Integration in Home Assistant aktiv, Pill mit demselben Broker verbunden (Settings → MQTT).
+
+| Einstellung | Standard | Bedeutung |
+|---|---|---|
+| `HA_DISCOVERY` | `1` | Discovery ein/aus |
+| `HA_PREFIX` | `homeassistant` | Discovery-Prefix (wie in Home Assistant eingestellt) |
+| `HA_DEVICE_NAME` | `DTSU5886` | Gerätename in Home Assistant |
+
+Discovery-Topics: `homeassistant/sensor/<pill-id>_dtsu/<feld>/config` (retained). Zum Entfernen der Sensoren aus Home Assistant das Gerät dort löschen bzw. leere retained-Nachrichten auf diese Topics senden.
 
 ## Hardware
 
