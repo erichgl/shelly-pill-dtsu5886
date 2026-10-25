@@ -12,20 +12,20 @@ Die Pill erlaubt nur 9 virtuelle Komponenten. Das Script legt an:
 
 | Virtual Component | Wert | Register | Format |
 |---|---|---|---|
-| `number:200` | Wirkleistung gesamt (W) | 7 | s16 |
-| `number:201` | Bezug (kWh) | 29–30 | u32 × `ENERGY_SCALE` |
-| `number:202` | Einspeisung (kWh) | 39–40 | u32 × `ENERGY_SCALE` |
-| `number:203–205` | Wirkleistung L1/L2/L3 (W) | 8 / 9 / 10 | s16 |
-| `number:206–208` | Strom L1/L2/L3 (A) | 3 / 4 / 5 | u16 × 0,01 |
+| `number:200–202` | Wirkleistung L1/L2/L3 (W) | 8 / 9 / 10 | s16 |
+| `number:203` | Wirkleistung gesamt (W) | 7 | s16 |
+| `number:204` | Bezug (kWh) | 29–30 | u32 × `ENERGY_SCALE` |
+| `number:205–207` | Spannung L1/L2/L3 (V) | 0 / 1 / 2 | u16 × 0,1 |
+| `number:208` | Frequenz (Hz) | 26 | u16 × 0,01 |
 | `group:200` | Gruppe „DTSU5886“ (entfällt, falls kein Platz mehr frei ist) | – | – |
 
 Reserve (in `ENTITIES` vorhanden, aber ohne Komponente):
 
 | Wert | Register | Format |
 |---|---|---|
-| Spannung L1/L2/L3 (V) | 0 / 1 / 2 | u16 × 0,1 |
-| Frequenz (Hz) | 26 | u16 × 0,01 |
+| Einspeisung (kWh) | 39–40 | u32 × `ENERGY_SCALE` |
 | Energie netto (kWh) | 49–50 | u32 × `ENERGY_SCALE` |
+| Strom L1/L2/L3 (A) | 3 / 4 / 5 | u16 × 0,01 |
 | Leistungsfaktor gesamt | 19 | s16 × 0,001 |
 | Blindleistung gesamt (var) | 11 | s16 |
 | Scheinleistung gesamt (VA) | 15 | u16 |
